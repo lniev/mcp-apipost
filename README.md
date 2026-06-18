@@ -315,10 +315,8 @@ apipost_schema_to_types target_id: "api_123" output_ts: true output_jsdoc: true
 **提示**：这是一个专注于 API 接口管理的 MCP 工具，简化了接口创建和管理流程，提高团队协作效率。
 
 ## 联系方式
-
 - 邮箱: LnievV@outlook.com
-- 问题反馈: [GitHub Issues](https://github.com/lniev/apipost-mcp/issues)
-- 项目主页: [GitHub Repository](https://github.com/lniev/apipost-mcp)
+
 
 ## 相关链接
 
