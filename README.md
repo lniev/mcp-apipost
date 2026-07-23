@@ -1,4 +1,4 @@
-# ApiPost MCP2
+# MCP-ApiPost
 
 基于 MCP 协议和 [ApiPost 官方 OpenAPI](https://docs.apipost.net/docs/detail/2a37986cbc64000?target_id=23796913b176e1) 实现的 API 文档管理工具。
 
@@ -15,6 +15,83 @@
 - **路径导航** - 完整路径显示，快速定位
 - **权限管理** - 多种安全模式，灵活的操作权限控制
 - **Schema 转类型** - 将接口 JSON Schema 转换为 TypeScript 类型定义和 JSDoc 注释
+- **前端友好** - 一键获取接口定义并生成 TypeScript 类型，直接复用到项目请求代码中
+
+## 前端快速开始
+
+> 面向前端开发者的极简工作流：**浏览接口 → 生成 TS 类型 → 直接写请求代码**。
+
+### 1. 浏览并定位接口
+
+在 AI 编辑器中直接询问：
+
+```
+帮我列出 /user 相关的接口
+```
+
+MCP 会返回类似如下结果：
+
+```text
+[GET]    /api/v1/users/:id      - 获取用户详情   (api_abc123)
+[POST]   /api/v1/users          - 创建用户       (api_def456)
+[PUT]    /api/v1/users/:id      - 更新用户信息   (api_ghi789)
+```
+
+继续追问，查看具体接口详情：
+
+```
+查看 /api/v1/users/:id 这个接口的详情
+```
+
+### 2. 生成接口请求 TypeScript 代码
+
+直接让 AI 根据接口生成请求函数：
+
+```
+为 /api/v1/users/:id 生成前端请求代码
+```
+
+通过 `apipost_schema_to_types` 工具，AI 会先拉取接口 Schema，然后生成完整的请求类型和调用代码：
+
+```typescript
+// types/user.ts
+export interface GetUserParams {
+  id: number;
+}
+
+export interface GetUserResponse {
+  code: number;
+  data: {
+    id: number;
+    name: string;
+    email: string;
+    createdAt: string;
+  };
+  message: string;
+}
+
+// api/user.ts
+import request from '@/utils/request';
+
+export function getUserById(params: GetUserParams) {
+  return request.get<GetUserResponse>(`/api/v1/users/${params.id}`);
+}
+```
+
+### 3. 在项目中直接使用
+
+复制生成的代码到项目，无需再手动维护类型：
+
+```typescript
+import { getUserById } from '@/api/user';
+
+async function init() {
+  const { data } = await getUserById({ id: 1 });
+  console.log(data.name); // 类型安全，有自动补全
+}
+```
+
+无需手动对照接口文档维护类型，**一次生成，全程复用**，减少前后端沟通成本，提升开发效率。
 
 ## 使用流程
 
@@ -279,7 +356,7 @@ apipost_workspace action: "switch" team_name: "团队名" project_name: "项目�
 
 ### apipost_schema_to_types 说明
 
-**将接口的 JSON Schema 转换为 TypeScript 类型定义和 JSDoc 注释**，方便前端/后端对接口类型进行复用。
+**将接口的 JSON Schema 转换为 TypeScript 类型定义和 JSDoc 注释**，方便前端/后端对接口类型进行复用。尤其适合前端快速落地请求代码：拿到接口类型后，直接复制到项目即可配合 `axios`、`fetch` 等库使用。
 
 | 参数 | 类型 | 必需 | 说明 |
 |------|------|------|------|
