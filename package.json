@@ -12,7 +12,11 @@
     "debugger": "npx @modelcontextprotocol/inspector tsx -r dotenv/config src/index.ts",
     "gen:mcp-json": "node scripts/gen-mcp-json.mjs",
     "setup:claude-code": "npm run gen:mcp-json && node scripts/setup-claude-code.mjs",
-    "setup:codex": "npm run gen:mcp-json && node scripts/setup-codex.mjs"
+    "setup:codex": "npm run gen:mcp-json && node scripts/setup-codex.mjs",
+    "setup:cursor": "npm run gen:mcp-json && node scripts/setup-cursor.mjs",
+    "setup:windsurf": "npm run gen:mcp-json && node scripts/setup-windsurf.mjs",
+    "setup:trae": "npm run gen:mcp-json && node scripts/setup-trae.mjs",
+    "setup:qoder": "npm run gen:mcp-json && node scripts/setup-qoder.mjs"
   },
   "keywords": [
     "mcp",

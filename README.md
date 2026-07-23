@@ -1,6 +1,6 @@
 # MCP-ApiPost
 
-基于 MCP 协议和 [ApiPost 官方 OpenAPI](https://docs.apipost.net/docs/detail/2a37986cbc64000?target_id=23796913b176e1) 实现的 API 文档管理工具。
+基于 MCP 协议和 [ApiPost 官方 OpenAPI](https://docs.apipost.net/docs/detail/2a37986cbc64000?target_id=23796913b176e1) 实现的 API 文档管理工具，支持 Claude Code、Codex、Cursor、Windsurf、Trae、Qoder 等主流 AI 编辑器一键接入。
 
 ## 功能
 
@@ -16,6 +16,7 @@
 - **权限管理** - 多种安全模式，灵活的操作权限控制
 - **Schema 转类型** - 将接口 JSON Schema 转换为 TypeScript 类型定义和 JSDoc 注释
 - **前端友好** - 一键获取接口定义并生成 TypeScript 类型，直接复用到项目请求代码中
+
 
 ## 前端快速开始
 
@@ -150,8 +151,8 @@ touch .env
 编辑 `.env` 文件，添加所需的环境变量：
 
 ```env
-APIPOST_TOKEN=your_access_token_here
-APIPOST_HOST=https://open.apipost.net
+APIPOST_TOKEN=your_access_token_here   // 这里换成自己的 token，如何获取token见下面说明
+APIPOST_HOST=https://open.apipost.net  // 这里 如果私有化部署 换成私有的域名，不知道是啥的，分享一个接口的链接，填写链接host
 APIPOST_SECURITY_MODE=limited
 APIPOST_DEFAULT_TEAM_NAME=你的团队名称
 APIPOST_DEFAULT_PROJECT_NAME=你的项目名称
@@ -220,9 +221,41 @@ npm run setup:codex
 
 将配置写入 `~/.codex/config.toml`（TOML 格式，全局生效）。
 
+#### Cursor
+
+```bash
+npm run setup:cursor
+```
+
+将配置写入 `~/.cursor/mcp.json`（JSON 格式，全局生效）。
+
+#### Windsurf
+
+```bash
+npm run setup:windsurf
+```
+
+将配置写入 `~/.windsurf/mcp.json`（JSON 格式，全局生效）。
+
+#### Trae
+
+```bash
+npm run setup:trae
+```
+
+将配置写入 `~/.trae/mcp.json`（JSON 格式，全局生效）。
+
+#### Qoder
+
+```bash
+npm run setup:qoder
+```
+
+将配置写入 `~/.qoder/mcp.json`（JSON 格式，全局生效）。
+
 **注意：** 运行前请确保 `mcp.json` 中的环境变量已填写真实值。
 
-### 6. 手动配置 mcp.json
+### 6. 其他Agent客户端手动配置 mcp.json
 
 在 MCP 配置文件中添加：
 
@@ -233,8 +266,8 @@ npm run setup:codex
       "command": "node",
       "args": ["/absolute/path/to/apipost-mcp/dist/index.js"],
       "env": {
-        "APIPOST_TOKEN": "your_access_token_here",
-        "APIPOST_HOST": "https://open.apipost.net",
+        "APIPOST_TOKEN": "your_access_token_here", // 换成自己的token
+        "APIPOST_HOST": "https://open.apipost.net", // 私有化部署 换成 私有化域名，不知道是啥的，分享一个接口的链接，填写链接host
         "APIPOST_SECURITY_MODE": "limited",
         "APIPOST_DEFAULT_TEAM_NAME": "你的团队名称",
         "APIPOST_DEFAULT_PROJECT_NAME": "你的项目名称",
