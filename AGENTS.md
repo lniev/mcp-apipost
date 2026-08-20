@@ -29,7 +29,8 @@
 ```
 apipost-mcp/
 ├── src/
-│   ├── index.ts              # MCP Server 入口：注册工具、启动 stdio 传输
+│   ├── index.ts              # 启动入口：validateEnv + 工作空间预热 + 连接 stdio
+│   ├── server.ts             # Server 组装：createServer() + handleCallTool()（无副作用，可测）
 │   ├── config/               # 环境变量读取、安全模式校验、URL 前缀处理
 │   ├── workspace/            # 工作空间状态管理（团队/项目初始化与切换）
 │   ├── api-client/           # Axios 封装，对接 ApiPost OpenAPI
@@ -169,6 +170,36 @@ npm run start
 - **严格类型**：`strict: true`，避免 `any`
 - **纯函数优先**：utils / schema 模块保持纯函数
 - **错误处理**：业务错误使用 `throw new Error()`，统一在 handler 层格式化
+
+### 5.4 测试
+
+使用 [Vitest](https://vitest.dev/)（零配置支持 ESM + TS）。
+
+```bash
+npm test            # 单次运行全部测试
+npm run test:watch  # 监听模式
+```
+
+**约定：**
+- 测试文件与被测模块同目录，命名为 `*.test.ts`（已被 `tsconfig.json` exclude，不会编入 `dist`）。
+- 按依赖层级选择 mock 策略：
+
+| 被测模块 | 策略 |
+|----------|------|
+| `utils` / `schema`（纯函数） | 直接断言，无 mock |
+| `config` | `vi.stubEnv` + `vi.resetModules()` + 动态 `import()` 控制环境变量 |
+| `api-client` | `vi.mock('axios')`，用 `vi.hoisted` 持有 mock 实例 |
+| `workspace` / `tools` | `vi.mock('../api-client/index.js')` 打桩 HTTP 层 |
+| MCP 协议层 | `src/server.test.ts`，用自实现的 `InMemoryTransport` 让 `Client`/`Server` 进程内握手 |
+
+**MCP 集成测试要点：**
+- SDK 0.4.0 无内置内存 transport，`src/server.test.ts` 里自实现了 `InMemoryTransport`（约 20 行，实现 `Transport` 接口，两端互连）。
+- 集成测试 `vi.mock` 掉 `api-client` 但保留真实 `workspace`，验证「协议 → handler → workspace 初始化」三层链路，仅屏蔽纯网络 IO。
+- `validateEnv()` 的 `process.exit(1)` 副作用只留在 `index.ts`，测试通过 `createServer()` 拿到无副作用的 server 实例。
+
+**新增代码测试约定：**
+- 新增纯函数必须补 `*.test.ts`。
+- 新增 handler 在 `src/tools/handlers.test.ts` 补参数解析与错误分支用例。
 
 ---
 
