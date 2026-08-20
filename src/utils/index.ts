@@ -27,7 +27,8 @@ const DEFAULT_VALUES: Record<string, unknown> = {
 
 export function defaultValueByType(type: string | undefined): unknown {
     if (!type) return '';
-    return DEFAULT_VALUES[type.toLowerCase()] ?? '';
+    const value = DEFAULT_VALUES[type.toLowerCase()];
+    return value === undefined ? '' : value;
 }
 
 // ============ 输入验证辅助函数 ============
