@@ -296,9 +296,12 @@ export const handleSmartCreate: ToolHandler = async (args) => {
     throw new Error(`🔒 安全模式 "${APIPOST_SECURITY_MODE}" 不允许创建操作。需要 "limited" 或 "full" 模式。`);
   }
 
-  // 解析参数字符串
-  const parseParams = (str: string | undefined): ApiField[] => {
+  // 解析参数字符串（兼容已经是对象的情况）
+  const parseParams = (str: string | object | undefined): ApiField[] => {
     if (!str) return [];
+    // 如果已经是对象/数组，直接返回
+    if (typeof str === 'object') return str as ApiField[];
+    // 如果是字符串，尝试解析
     try {
       return JSON.parse(str) as ApiField[];
     } catch {
@@ -312,11 +315,12 @@ export const handleSmartCreate: ToolHandler = async (args) => {
   const cookies = parseParams(args.cookies as string | undefined);
   const responses = parseParams(args.responses as string | undefined);
 
-  // 构建认证
+  // 构建认证（兼容已经是对象的情况）
   let auth: AuthConfig | undefined;
   if (args.auth) {
     try {
-      auth = JSON.parse(args.auth as string) as AuthConfig;
+      // 如果已经是对象，直接使用
+      auth = typeof args.auth === 'object' ? args.auth as AuthConfig : JSON.parse(args.auth as string) as AuthConfig;
     } catch {
       throw new Error("认证配置解析失败");
     }
@@ -365,6 +369,26 @@ export const handleSmartCreate: ToolHandler = async (args) => {
   const queryCount = query.length;
   const bodyCount = body.length;
   const responseCount = responses.length;
+
+  // 尝试序列化 template 用于调试，捕获循环引用错误
+  try {
+    console.log('handleSmartCreate - template:', JSON.stringify(template, null, 2));
+  } catch (e) {
+    console.error('模板序列化失败（可能存在循环引用）:', (e as Error).message);
+    // 分别测试每个部分
+    try {
+      JSON.stringify(template.request);
+      console.log('✓ request 可序列化');
+    } catch {
+      console.error('✗ request 不可序列化');
+    }
+    try {
+      JSON.stringify(template.response);
+      console.log('✓ response 可序列化');
+    } catch {
+      console.error('✗ response 不可序列化');
+    }
+  }
 
   const result = await createApi(template);
 
@@ -501,10 +525,13 @@ export const handleUpdate: ToolHandler = async (args) => {
   const newMethod = args.method as string | undefined;
   const newUrl = args.url ? applyUrlPrefix(args.url as string) : undefined;
 
-  // 解析参数字符串
-  const parseParams = (str: string | undefined): ApiField[] | undefined => {
+  // 解析参数字符串（兼容已经是对象的情况）
+  const parseParams = (str: string | object | undefined): ApiField[] | undefined => {
     if (str === undefined) return undefined;
     if (str === "[]") return [];
+    // 如果已经是对象/数组，直接返回
+    if (typeof str === 'object') return str as ApiField[];
+    // 如果是字符串，尝试解析
     try {
       return JSON.parse(str) as ApiField[];
     } catch {
@@ -535,7 +562,7 @@ export const handleUpdate: ToolHandler = async (args) => {
   const existingRequest = originalApi.request || {};
   const mergedRequest = {
     auth: providedFields.has('auth')
-      ? (args.auth ? JSON.parse(args.auth as string) : { type: 'inherit' })
+      ? (args.auth ? (typeof args.auth === 'object' ? args.auth : JSON.parse(args.auth as string)) : { type: 'inherit' })
       : (existingRequest.auth || { type: 'inherit' }),
     pre_tasks: existingRequest.pre_tasks || [],
     post_tasks: existingRequest.post_tasks || [],
@@ -645,6 +672,7 @@ export const handleDetail: ToolHandler = async (args) => {
       body?: {
         mode?: 'form-data' | 'urlencoded' | 'json' | 'raw' | 'none';
         parameter?: Array<{ key: string; description?: string; field_type?: string; not_null?: number; value?: string }>;
+        raw?: string;
         raw_parameter?: Array<{ key: string; description?: string; field_type?: string; not_null?: number; value?: string }>;
         raw_schema?: Record<string, unknown>;
       };
@@ -658,6 +686,10 @@ export const handleDetail: ToolHandler = async (args) => {
       }>;
     };
   };
+
+  // 调试：输出完整的 body 信息
+  console.log('=== handleDetail DEBUG ===');
+  console.log('Body 完整信息:', JSON.stringify(apiDetail.request?.body, null, 2));
 
   // 格式化接口详情
   let detailText = `📋 接口详情\n\n`;
@@ -734,21 +766,13 @@ export const handleDetail: ToolHandler = async (args) => {
     }
     detailText += `\n`;
   } else if (bodyMode === 'json') {
-    // json: 从 raw_schema 提取并使用 flattenSchemaProperties 解析
-    const schema = body?.raw_schema;
-    const schemaFields = flattenSchemaProperties(schema);
-    detailText += `📝 Body参数 (JSON) - ${schemaFields.length}个字段\n\n`;
-    if (schemaFields.length > 0) {
-      detailText += `| 字段路径 | 类型 | 必需 | 描述 |\n`;
-      detailText += `|----------|------|------|------|\n`;
-      schemaFields.forEach((field) => {
-        const required = field.required ? '是' : '否';
-        detailText += `| ${field.field} | ${field.type} | ${required} | ${field.desc || '-'} |\n`;
-      });
+    // json: 显示 raw JSON 内容
+    detailText += `📝 Body参数 (JSON)\n\n`;
+    if (body?.raw) {
+      detailText += `\`\`\`json\n${body.raw}\n\`\`\`\n\n`;
     } else {
-      detailText += `(无字段定义)\n`;
+      detailText += `(无Body内容)\n\n`;
     }
-    detailText += `\n`;
   } else {
     // raw / 其他
     detailText += `📝 Body参数 (${bodyMode})\n`;

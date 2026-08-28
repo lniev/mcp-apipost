@@ -27,6 +27,122 @@ export function generateRequestBodyFromParams(bodyParams: ApiField[] | undefined
     return buildJsonFromFieldList(bodyParams);
 }
 
+// ============ 从字段列表构建 JSON Schema ============
+export function buildJsonSchema(fields: ApiField[] | undefined): Record<string, unknown> {
+    if (!Array.isArray(fields) || fields.length === 0) {
+        return { type: 'object' };
+    }
+
+    const schema: Record<string, unknown> = {
+        type: 'object',
+        properties: {},
+        required: []
+    };
+
+    // 按字段路径构建嵌套的 schema 结构
+    for (const field of fields) {
+        if (!field.key) continue;
+
+        const pathSegments = field.key.split('.');
+        let currentSchema = schema;  // 每个字段从根开始
+
+        for (let i = 0; i < pathSegments.length; i++) {
+            const segment = pathSegments[i];
+            const isLast = i === pathSegments.length - 1;
+            const isArray = segment.endsWith('[]');
+            const cleanKey = isArray ? segment.slice(0, -2) : segment;
+
+            if (isLast) {
+                // 最后一个段，设置字段类型和描述
+                // 确保 properties 存在
+                if (!currentSchema.properties) {
+                    currentSchema.properties = {};
+                }
+                const props = currentSchema.properties as Record<string, unknown>;
+
+                // 如果字段类型是 object 或 array，需要包含嵌套结构
+                if (field.type === 'object') {
+                    props[cleanKey] = {
+                        type: 'object',
+                        properties: {},
+                        required: [],
+                        description: field.desc || field.description || ''
+                    };
+                } else if (field.type === 'array') {
+                    props[cleanKey] = {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: {},
+                            required: []
+                        },
+                        description: field.desc || field.description || ''
+                    };
+                } else {
+                    props[cleanKey] = {
+                        type: field.type || 'string',
+                        description: field.desc || field.description || ''
+                    };
+                }
+
+                // 处理必填字段
+                if (field.required && !field.autoParent) {
+                    const req = currentSchema.required as string[];
+                    if (!req.includes(cleanKey)) {
+                        req.push(cleanKey);
+                    }
+                }
+            } else {
+                // 中间段，创建嵌套对象或数组
+                // 确保 properties 存在
+                if (!currentSchema.properties) {
+                    currentSchema.properties = {};
+                }
+                const props = currentSchema.properties as Record<string, unknown>;
+
+                if (!props[cleanKey]) {
+                    if (isArray) {
+                        // 创建数组类型
+                        props[cleanKey] = {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {},
+                                required: []
+                            }
+                        };
+                    } else {
+                        // 创建对象类型
+                        props[cleanKey] = {
+                            type: 'object',
+                            properties: {},
+                            required: []
+                        };
+                    }
+                }
+
+                // 移动到下一层
+                if (isArray) {
+                    const arraySchema = props[cleanKey] as Record<string, unknown>;
+                    const items = arraySchema.items as Record<string, unknown>;
+                    // 确保 items 有 properties
+                    if (!items.properties) {
+                        items.properties = {};
+                    }
+                    if (!items.required) {
+                        items.required = [];
+                    }
+                    currentSchema = items;
+                } else {
+                    currentSchema = props[cleanKey] as Record<string, unknown>;
+                }
+            }
+        }
+    }
+
+    return schema;
+}
+
 // ============ 构建 Body 区块 ============
 export function buildBodySection(bodyParams: ApiField[] | undefined): BodySection {
     const hasBody = Array.isArray(bodyParams) && bodyParams.length > 0;
@@ -39,12 +155,20 @@ export function buildBodySection(bodyParams: ApiField[] | undefined): BodySectio
             : JSON.stringify(rawBody, null, 4))
         : '';
 
+    // 构建 JSON Schema，包含 properties 和 required
+    const schema = buildJsonSchema(expandedFields);
+
+    // 调试日志
+    console.log('buildBodySection - bodyParams:', JSON.stringify(bodyParams));
+    console.log('buildBodySection - expandedFields:', JSON.stringify(expandedFields));
+    console.log('buildBodySection - schema:', JSON.stringify(schema, null, 2));
+
     return {
         mode: hasBody ? 'json' : 'none',
         parameter: [],
         raw: rawString,
         raw_parameter: convertParams(expandedFields),
-        raw_schema: { type: 'object' },
+        raw_schema: schema,
         binary: null
     };
 }
@@ -136,24 +260,43 @@ export function normalizeResponses(
         if (fields.length === 0) {
             throw new Error('responses.fields 必填且不能为空，data 字段已禁用，请提供字段列表');
         }
+
+        // 只调用一次 expandFieldListWithParents，避免重复计算和潜在的循环引用
         const expandedFields = expandFieldListWithParents(fields);
         const descMap = buildDescMap(expandedFields);
         const rawData = buildJsonFromFieldList(expandedFields);
 
+        // 提前生成所有需要的数据，避免在对象构造中重复调用
+        const rawString = APIPOST_INLINE_COMMENTS && expandedFields.length > 0
+            ? stringifyWithComments(rawData, descMap)
+            : JSON.stringify(rawData, null, 4);
+
+        // 重要：深拷贝 rawData 避免循环引用
+        let mockData: string;
+        try {
+            mockData = JSON.stringify(JSON.parse(JSON.stringify(rawData)));
+        } catch (e) {
+            console.error('Failed to stringify rawData:', e);
+            mockData = '{}';
+        }
+
+        const rawParameters = convertParams(expandedFields);
+
+        // 从字段列表生成 JSON Schema
+        const schema = buildJsonSchema(expandedFields);
+
         return {
             example_id: String(index + 1),
-            raw: APIPOST_INLINE_COMMENTS && expandedFields.length > 0
-                ? stringifyWithComments(rawData, descMap)
-                : JSON.stringify(rawData, null, 4),
-            raw_parameter: convertParams(expandFieldListWithParents(resp.fields || [])),
+            raw: rawString,
+            raw_parameter: rawParameters,
             headers: [],
             expect: {
                 code: String(resp.status ?? 200),
                 content_type: 'application/json',
                 is_default: index === 0 ? 1 : -1,
-                mock: JSON.stringify(buildJsonFromFieldList(expandFieldListWithParents(resp.fields || []))),
+                mock: mockData,
                 name: resp.name || (index === 0 ? '成功响应' : `响应${index + 1}`),
-                schema: resp.schema || { type: 'object', properties: {} },
+                schema: schema,
                 verify_type: 'schema',
                 sleep: 0
             }

@@ -94,7 +94,7 @@ export interface BodySection {
     parameter: unknown[];
     raw: string;
     raw_parameter: ApiParameter[];
-    raw_schema: { type: string };
+    raw_schema: Record<string, unknown>;
     binary: null;
 }
 

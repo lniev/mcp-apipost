@@ -206,72 +206,124 @@ function parsePathSegment(seg: string): PathSegment {
 
 // ============ 从字段列表构建 JSON 对象 ============
 /**
- * 使用类型安全的实现，避免 any 类型
+ * 使用类型安全的实现，完全避免循环引用
+ *
+ * 核心改进：
+ * 1. 使用深拷贝策略，确保每次修改都不会产生对象引用
+ * 2. 采用"构建-合并"模式，而非直接修改引用
+ * 3. 对数组类型特别处理，避免共享元素引用
  */
 export function buildJsonFromFieldList(fields: ApiField[] | undefined): Record<string, unknown> {
     const root: Record<string, unknown> = {};
     if (!Array.isArray(fields)) return root;
 
+    // 深拷贝辅助函数
+    function deepClone<T>(obj: T): T {
+        if (obj === null || typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) return obj.map(item => deepClone(item)) as T;
+
+        const cloned: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+            cloned[key] = deepClone(value);
+        }
+        return cloned as T;
+    }
+
+    // 深度合并两个对象，处理数组特殊情况
+    function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+        const result = deepClone(target);
+
+        for (const [key, value] of Object.entries(source)) {
+            if (value === null || value === undefined) {
+                result[key] = value;
+                continue;
+            }
+
+            const existingValue = result[key];
+
+            // 如果是数组，需要特殊合并
+            if (Array.isArray(value)) {
+                if (!Array.isArray(existingValue)) {
+                    result[key] = deepClone(value);
+                } else {
+                    // 合并数组元素（只合并第一个元素，因为它是示例）
+                    if (value.length > 0 && existingValue.length > 0) {
+                        const valueItem = value[0];
+                        const existingItem = existingValue[0];
+
+                        if (typeof valueItem === 'object' && valueItem !== null &&
+                            typeof existingItem === 'object' && existingItem !== null &&
+                            !Array.isArray(valueItem) && !Array.isArray(existingItem)) {
+                            result[key] = [deepMerge(existingItem as Record<string, unknown>, valueItem as Record<string, unknown>)];
+                        } else {
+                            result[key] = deepClone(value);
+                        }
+                    } else {
+                        result[key] = deepClone(value);
+                    }
+                }
+            }
+            // 如果是对象，递归合并
+            else if (typeof value === 'object' && !Array.isArray(value)) {
+                if (typeof existingValue === 'object' && existingValue !== null && !Array.isArray(existingValue)) {
+                    result[key] = deepMerge(existingValue as Record<string, unknown>, value as Record<string, unknown>);
+                } else {
+                    result[key] = deepClone(value);
+                }
+            }
+            // 基本类型直接覆盖
+            else {
+                result[key] = value;
+            }
+        }
+
+        return result;
+    }
+
+    // 根据路径构建嵌套对象
+    function buildNestedObject(segments: PathSegment[], value: unknown): Record<string, unknown> {
+        if (segments.length === 0) return {};
+
+        const seg = segments[0];
+        const isLast = segments.length === 1;
+
+        if (seg.isArray) {
+            // 数组类型
+            if (isLast) {
+                // 叶子节点：数组本身
+                return { [seg.key]: value };
+            } else {
+                // 非叶子节点：数组包含对象
+                const nested = buildNestedObject(segments.slice(1), value);
+                return { [seg.key]: [nested] };
+            }
+        } else {
+            // 对象类型
+            if (isLast) {
+                // 叶子节点：直接值
+                return { [seg.key]: value };
+            } else {
+                // 非叶子节点：嵌套对象
+                const nested = buildNestedObject(segments.slice(1), value);
+                return { [seg.key]: nested };
+            }
+        }
+    }
+
+    // 遍历所有字段，逐个构建并合并
     for (const field of fields) {
         // 跳过自动补充的父级节点
         if (!isValidApiField(field) || field.autoParent) continue;
 
         const path = field.key;
         const segments = path.split('.').map(parsePathSegment);
+        const value = field.example ?? field.value ?? defaultValueByType(field.type);
 
-        // 使用栈来跟踪当前路径
-        type Container = Record<string, unknown> | unknown[];
-        let current: Container = root;
-        const stack: { container: Container; key: string | number; isArray: boolean }[] = [];
+        // 构建当前字段的嵌套对象
+        const nested = buildNestedObject(segments, value);
 
-        for (let i = 0; i < segments.length; i++) {
-            const seg = segments[i];
-            const isLeaf = i === segments.length - 1;
-
-            if (seg.isArray) {
-                // 处理数组
-                const arr = (current as Record<string, unknown>)[seg.key];
-                let arrayContainer: unknown[];
-
-                if (!Array.isArray(arr)) {
-                    arrayContainer = [];
-                    (current as Record<string, unknown>)[seg.key] = arrayContainer;
-                } else {
-                    arrayContainer = arr;
-                }
-
-                if (arrayContainer.length === 0) {
-                    arrayContainer.push({});
-                }
-
-                if (isLeaf) {
-                    arrayContainer[0] = field.example ?? field.value ?? defaultValueByType(field.type);
-                } else {
-                    const next = arrayContainer[0];
-                    if (typeof next !== 'object' || next === null) {
-                        const newObj: Record<string, unknown> = {};
-                        arrayContainer[0] = newObj;
-                        current = newObj;
-                    } else {
-                        current = next as Record<string, unknown>;
-                    }
-                }
-            } else {
-                // 处理对象
-                if (isLeaf) {
-                    (current as Record<string, unknown>)[seg.key] = field.example ?? field.value ?? defaultValueByType(field.type);
-                } else {
-                    const next = (current as Record<string, unknown>)[seg.key];
-                    if (typeof next !== 'object' || next === null) {
-                        const newObj: Record<string, unknown> = {};
-                        (current as Record<string, unknown>)[seg.key] = newObj;
-                        current = newObj;
-                    } else {
-                        current = next as Record<string, unknown>;
-                    }
-                }
-            }
-        }
+        // 深度合并到root中
+        Object.assign(root, deepMerge(root, nested));
     }
 
     return root;
