@@ -69,15 +69,55 @@ export function buildJsonSchema(fields: ApiField[] | undefined): Record<string, 
                         description: field.desc || field.description || ''
                     };
                 } else if (field.type === 'array') {
-                    props[cleanKey] = {
-                        type: 'array',
-                        items: {
-                            type: 'object',
-                            properties: {},
-                            required: []
-                        },
-                        description: field.desc || field.description || ''
-                    };
+                    // 检查是否有子字段来判断数组元素类型
+                    const arrayPrefix = `${field.key}.`;
+                    const arrayBracketPrefix = `${field.key}[]`;
+                    const hasNestedFields = fields.some(f =>
+                        f.key.startsWith(arrayPrefix) || f.key.startsWith(arrayBracketPrefix)
+                    );
+
+                    if (hasNestedFields) {
+                        // 数组包含对象
+                        props[cleanKey] = {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {},
+                                required: []
+                            },
+                            description: field.desc || field.description || ''
+                        };
+                    } else {
+                        // 简单类型数组（如 string[]）
+                        // 尝试从 schema.items.type 或 example 推断元素类型
+                        let itemType = 'string';
+                        if (field.schema && typeof field.schema === 'object') {
+                            const schema = field.schema as Record<string, unknown>;
+                            if (schema.items && typeof schema.items === 'object') {
+                                const items = schema.items as Record<string, unknown>;
+                                itemType = (items.type as string) || 'string';
+                            }
+                        }
+                        // 如果有 example 且是数组，从第一个元素推断类型
+                        if (Array.isArray(field.example) && field.example.length > 0) {
+                            const firstItem = field.example[0];
+                            if (typeof firstItem === 'number') {
+                                itemType = Number.isInteger(firstItem) ? 'integer' : 'number';
+                            } else if (typeof firstItem === 'boolean') {
+                                itemType = 'boolean';
+                            } else if (typeof firstItem === 'string') {
+                                itemType = 'string';
+                            }
+                        }
+
+                        props[cleanKey] = {
+                            type: 'array',
+                            items: {
+                                type: itemType
+                            },
+                            description: field.desc || field.description || ''
+                        };
+                    }
                 } else {
                     props[cleanKey] = {
                         type: field.type || 'string',
@@ -102,15 +142,33 @@ export function buildJsonSchema(fields: ApiField[] | undefined): Record<string, 
 
                 if (!props[cleanKey]) {
                     if (isArray) {
-                        // 创建数组类型
-                        props[cleanKey] = {
-                            type: 'array',
-                            items: {
-                                type: 'object',
-                                properties: {},
-                                required: []
-                            }
-                        };
+                        // 检查是否有子字段来判断数组元素类型
+                        const currentPathStr = pathSegments.slice(0, i + 1).join('.');
+                        const arrayPrefix = `${currentPathStr}.`;
+                        const arrayBracketPrefix = `${currentPathStr}[]`;
+                        const hasNestedFields = fields.some(f =>
+                            f.key.startsWith(arrayPrefix) || f.key.startsWith(arrayBracketPrefix)
+                        );
+
+                        if (hasNestedFields) {
+                            // 创建包含对象的数组类型
+                            props[cleanKey] = {
+                                type: 'array',
+                                items: {
+                                    type: 'object',
+                                    properties: {},
+                                    required: []
+                                }
+                            };
+                        } else {
+                            // 创建简单类型的数组
+                            props[cleanKey] = {
+                                type: 'array',
+                                items: {
+                                    type: 'string'
+                                }
+                            };
+                        }
                     } else {
                         // 创建对象类型
                         props[cleanKey] = {
