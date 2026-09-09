@@ -4,9 +4,9 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
-import { EDITORS, findEditor, writeEditorConfig } from './setup/editors.js';
+import { EDITORS, findEditor, isEditorInstalled, writeEditorConfig } from './setup/editors.js';
 import { applyGlobalConfig, getConfigPath, saveGlobalConfig } from './setup/global-config.js';
-import { confirmStartTest, runInteractiveSetup } from './setup/interactive.js';
+import { closeReadline, confirmStartTest, runInteractiveSetup } from './setup/interactive.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = resolve(__dirname, 'cli.js');
@@ -71,11 +71,15 @@ async function cmdSetup(): Promise<void> {
   await writeFile(mcpJsonPath, JSON.stringify(mcpJson, null, 2) + '\n', 'utf-8');
   console.log(`✅ 已生成 ${mcpJsonPath}`);
 
-  // 3. 写入各编辑器配置（不含 env，启动时从全局配置读取）
+  // 3. 写入各编辑器配置（不含 env，启动时从全局配置读取），未安装的编辑器提示并跳过
   const serverConfig = getServerCommand();
   for (const editorName of answers.editors) {
     const editor = findEditor(editorName);
     if (!editor) continue;
+    if (!isEditorInstalled(editor)) {
+      console.log(`⏭️ 未检测到 ${editor.name}，已跳过 (${editor.configPath})`);
+      continue;
+    }
     try {
       await writeEditorConfig(editor, serverConfig);
       console.log(`✅ 已配置到 ${editor.name} (${editor.configPath})`);
@@ -84,8 +88,10 @@ async function cmdSetup(): Promise<void> {
     }
   }
 
-  // 4. 可选连接测试
-  if (await confirmStartTest()) {
+  // 4. 可选连接测试（所有交互结束后统一关闭 readline）
+  const startTest = await confirmStartTest();
+  closeReadline();
+  if (startTest) {
     applyGlobalConfig(env);
     await cmdStart();
   }
@@ -96,6 +102,11 @@ async function cmdSetupEditor(editorName: string): Promise<void> {
   if (!editor) {
     console.error(`❌ 未知编辑器: ${editorName}`);
     console.error(`支持的编辑器: ${EDITORS.map((e) => e.name).join(', ')}`);
+    process.exit(1);
+  }
+
+  if (!isEditorInstalled(editor)) {
+    console.error(`⏭️ 未检测到 ${editor.name}，已跳过 (${editor.configPath})`);
     process.exit(1);
   }
 

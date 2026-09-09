@@ -131,11 +131,13 @@ export async function runInteractiveSetup(): Promise<SetupAnswers> {
 
   const editors = selected.map((name) => editorMap[name]).filter(Boolean);
 
-  rl.close();
-
   return { token, host, securityMode, defaultTeam, defaultProject, urlPrefix, editors };
 }
 
 export async function confirmStartTest(): Promise<boolean> {
   return confirm('\n? 是否启动 MCP Server 测试连接? (Y/n) ');
+}
+
+export function closeReadline(): void {
+  rl.close();
 }

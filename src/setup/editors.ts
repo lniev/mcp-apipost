@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 export interface EditorConfig {
   name: string;
@@ -28,6 +28,10 @@ export const EDITORS: EditorConfig[] = [
 
 export function findEditor(name: string): EditorConfig | undefined {
   return EDITORS.find((e) => e.name === name);
+}
+
+export function isEditorInstalled(editor: EditorConfig): boolean {
+  return existsSync(dirname(editor.configPath));
 }
 
 export async function writeEditorConfig(

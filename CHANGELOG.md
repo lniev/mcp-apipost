@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.2] - 2026-09-09
+
+### 🐛 问题修复
+
+- **`setup` 未安装编辑器报错**：未安装的编辑器（如 trae，配置目录 `~/.trae` 不存在）写入配置时 ENOENT 报错，现先检测配置目录，未安装时提示「⏭️ 未检测到 XX，已跳过」并继续配置其余编辑器；`setup:<editor>` 单编辑器模式同步该行为（提示后退出码 1）
+- **`setup` 结束时 readline 崩溃**：`runInteractiveSetup()` 提前关闭共享 readline，后续「是否启动 MCP Server 测试连接」提问抛出 `ERR_USE_AFTER_CLOSE`，现改为所有交互结束后统一关闭
+- 新增 `src/setup/editors.test.ts`（8 个用例：findEditor / isEditorInstalled / writeEditorConfig）
+
 ## [1.5.0] - 2026-09-09
 
 ### ✨ 新增功能
