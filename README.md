@@ -1,6 +1,6 @@
 # MCP-ApiPost
 
-基于 MCP 协议和 [ApiPost 官方 OpenAPI](https://docs.apipost.net/docs/detail/2a37986cbc64000?target_id=23796913b176e1) 实现的 API 文档管理工具，支持 Claude Code、Codex、Cursor、Windsurf、Trae、Qoder 等主流 AI 编辑器一键接入。
+基于 MCP 协议和 [ApiPost 官方 OpenAPI](https://docs.apipost.net/docs/detail/2a37986cbc64000?target_id=23796913b176e1) 实现的 API 文档管理工具，支持 Claude Code、Codex、Cursor、Windsurf、Trae、Qoder、WorkBuddy 等主流 AI 编辑器一键接入。
 
 ## 功能
 
@@ -99,7 +99,7 @@ async function init() {
 ### 1. 安装
 
 ```bash
-npm install -g apipost-mcp
+npm install -g apipost-mcp-cli
 ```
 
 ### 2. 配置
@@ -294,22 +294,13 @@ npm run setup:workbuddy
   "mcpServers": {
     "apipost": {
       "command": "node",
-      "args": ["/absolute/path/to/apipost-mcp/dist/index.js"],
-      "env": {
-        "APIPOST_TOKEN": "your_access_token_here", // 换成自己的token
-        "APIPOST_HOST": "https://open.apipost.net", // 私有化部署 换成 私有化域名，不知道是啥的，分享一个接口的链接，填写链接host
-        "APIPOST_SECURITY_MODE": "limited",
-        "APIPOST_DEFAULT_TEAM_NAME": "你的团队名称",
-        "APIPOST_DEFAULT_PROJECT_NAME": "你的项目名称",
-        "APIPOST_URL_PREFIX": "接口前缀可定义常量比如{{host}}",
-        "APIPOST_INLINE_COMMENTS": "true"
-      }
+      "args": ["/absolute/path/to/apipost-mcp/dist/cli.js", "start"]
     }
   }
 }
 ```
 
-**优先级说明：** 系统环境变量 > `.env` 文件中的变量。如果 MCP 配置文件中也配置了相同的环境变量，MCP 配置的值会覆盖 `.env` 文件中的值。
+**优先级说明：** 系统环境变量 > 全局配置文件 (`~/.apipost-mcp/config.json`) > 默认值。编辑器配置中的 `env` 字段（如存在）优先级最高。
 
 ## 项目结构
 
