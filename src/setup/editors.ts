@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -32,6 +32,58 @@ export function findEditor(name: string): EditorConfig | undefined {
 
 export function isEditorInstalled(editor: EditorConfig): boolean {
   return existsSync(dirname(editor.configPath));
+}
+
+export async function removeEditorConfig(editor: EditorConfig): Promise<boolean> {
+  if (!existsSync(editor.configPath)) return false;
+  if (editor.format === 'json') {
+    return removeJsonConfig(editor.configPath);
+  }
+  return removeTomlConfig(editor.configPath);
+}
+
+// 原子写：先写临时文件再 rename，避免写入中途崩溃损坏目标文件（如 ~/.claude.json）
+async function atomicWriteFile(path: string, content: string): Promise<void> {
+  const tmp = `${path}.tmp-${process.pid}`;
+  try {
+    await writeFile(tmp, content, 'utf-8');
+    await rename(tmp, path);
+  } catch (err) {
+    await rm(tmp, { force: true }).catch(() => {});
+    throw err;
+  }
+}
+
+async function removeJsonConfig(configPath: string): Promise<boolean> {
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(await readFile(configPath, 'utf-8')) as Record<string, unknown>;
+  } catch {
+    return false;
+  }
+
+  const servers = data.mcpServers;
+  if (!servers || typeof servers !== 'object' || !('apipost' in servers)) return false;
+
+  delete (servers as Record<string, unknown>).apipost;
+  await atomicWriteFile(configPath, JSON.stringify(data, null, 2) + '\n');
+  return true;
+}
+
+async function removeTomlConfig(configPath: string): Promise<boolean> {
+  let content: string;
+  try {
+    content = await readFile(configPath, 'utf-8');
+  } catch {
+    return false;
+  }
+
+  const sectionRegex = /\[mcp_servers\.apipost\][\s\S]*?(?=\n\[|$)/;
+  if (!sectionRegex.test(content)) return false;
+
+  content = content.replace(sectionRegex, '').replace(/\n{3,}/g, '\n\n').trim();
+  await atomicWriteFile(configPath, content ? content + '\n' : '');
+  return true;
 }
 
 export async function writeEditorConfig(

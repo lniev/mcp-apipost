@@ -1,6 +1,6 @@
 {
   "name": "apipost-mcp-cli",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "ApiPost MCP - API文档管理工具，支持接口创建、修改、查看、类型生成和批量操作",
   "main": "dist/index.js",
     "bin": {

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rmdir, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -35,6 +35,17 @@ export async function saveGlobalConfig(config: GlobalConfig): Promise<void> {
 
 export function getConfigPath(): string {
   return CONFIG_PATH;
+}
+
+export async function removeGlobalConfig(): Promise<boolean> {
+  if (!existsSync(CONFIG_PATH)) return false;
+  await rm(CONFIG_PATH);
+  try {
+    await rmdir(CONFIG_DIR);
+  } catch {
+    // 目录非空（存在其他文件）则保留
+  }
+  return true;
 }
 
 export function applyGlobalConfig(config: GlobalConfig): void {

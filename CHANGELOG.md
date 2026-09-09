@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.0] - 2026-09-09
+
+### ✨ 新增功能
+
+- **新增命令 `apipost-mcp remove`**：一键移除所有编辑器配置（保留各编辑器配置中的其他 MCP 服务）、全局配置 `~/.apipost-mcp/config.json`（含 Token），并自动执行 `npm uninstall -g apipost-mcp-cli` 卸载全局包；默认交互确认（默认 No），支持 `--force` / `-f` 跳过确认
+
+### 🐛 问题修复
+
+- **测试环境污染**：`src/config/index.ts` 在模块 import 时无条件加载真实全局配置 `~/.apipost-mcp/config.json`，本机存在该文件时 4 个测试用例（validateEnv / handleTestConnection / handleDelete / MCP 集成）必然失败；现 Vitest 环境下跳过全局配置加载，测试恢复确定性
+
+### 🧪 测试
+
+- 新增 `removeEditorConfig` 9 个用例（JSON/TOML 的移除、保留其他配置、文件缺失/损坏分支）
+- 新增 `src/setup/global-config.test.ts` 7 个用例（load/save/remove 全链路，mock homedir 隔离）
+
 ## [1.5.2] - 2026-09-09
 
 ### 🐛 问题修复

@@ -138,6 +138,19 @@ export async function confirmStartTest(): Promise<boolean> {
   return confirm('\n? 是否启动 MCP Server 测试连接? (Y/n) ');
 }
 
+export async function confirmDanger(prompt: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    // stdin EOF（非 TTY / 管道输入）时 readline 触发 close 而 question 回调不执行，兜底按“取消”处理避免挂起
+    const onClose = () => resolve(false);
+    rl.once('close', onClose);
+    rl.question(prompt, (answer) => {
+      rl.removeListener('close', onClose);
+      const trimmed = answer.trim().toLowerCase();
+      resolve(trimmed === 'y' || trimmed === 'yes');
+    });
+  });
+}
+
 export function closeReadline(): void {
   rl.close();
 }

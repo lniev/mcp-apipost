@@ -5,7 +5,10 @@
 import { applyGlobalConfig, loadGlobalConfig } from '../setup/global-config.js';
 
 // 加载全局配置文件（~/.apipost-mcp/config.json），优先级低于系统环境变量
-applyGlobalConfig(await loadGlobalConfig());
+// Vitest 环境下跳过，避免真实全局配置污染测试（测试用 vi.stubEnv 控制环境变量）
+if (!process.env.VITEST) {
+  applyGlobalConfig(await loadGlobalConfig());
+}
 
 // ============ 环境变量配置 ============
 export const APIPOST_TOKEN = process.env.APIPOST_TOKEN || '';

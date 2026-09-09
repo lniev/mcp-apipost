@@ -114,6 +114,15 @@ apipost-mcp setup
 
 配置完成后，在对应的 AI 编辑器中即可直接使用 apipost 工具。
 
+### 4. 卸载
+
+```bash
+apipost-mcp remove          # 交互确认后移除
+apipost-mcp remove --force  # 跳过确认直接移除
+```
+
+依次移除所有编辑器中的 apipost MCP 配置、全局配置 `~/.apipost-mcp/config.json`（含 Token），最后自动执行 `npm uninstall -g apipost-mcp-cli` 卸载全局包。编辑器配置中的其他 MCP 服务不受影响。
+
 ---
 
 ## 使用流程（源码方式）

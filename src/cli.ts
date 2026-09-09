@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
-import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
 
-import { EDITORS, findEditor, isEditorInstalled, writeEditorConfig } from './setup/editors.js';
-import { applyGlobalConfig, getConfigPath, saveGlobalConfig } from './setup/global-config.js';
-import { closeReadline, confirmStartTest, runInteractiveSetup } from './setup/interactive.js';
+import { EDITORS, findEditor, isEditorInstalled, removeEditorConfig, writeEditorConfig } from './setup/editors.js';
+import { applyGlobalConfig, getConfigPath, removeGlobalConfig, saveGlobalConfig } from './setup/global-config.js';
+import { closeReadline, confirmDanger, confirmStartTest, runInteractiveSetup } from './setup/interactive.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = resolve(__dirname, 'cli.js');
@@ -26,6 +26,7 @@ ApiPost MCP - API 文档管理工具
   setup              交互式配置（写入全局配置并同步到编辑器）
   setup:<editor>     从全局配置同步到指定编辑器
   start              启动 MCP Server（stdio 模式）
+  remove             移除所有编辑器配置、全局配置（含 Token）并卸载全局 npm 包
 
 支持的编辑器: ${EDITORS.map((e) => e.name).join(', ')}
 
@@ -33,6 +34,8 @@ ApiPost MCP - API 文档管理工具
   apipost-mcp setup          # 交互式配置
   apipost-mcp setup:cursor   # 配置到 Cursor
   apipost-mcp start          # 启动 MCP Server
+  apipost-mcp remove         # 交互确认后移除
+  apipost-mcp remove --force # 跳过确认直接移除
 `);
 }
 
@@ -119,6 +122,60 @@ async function cmdSetupEditor(editorName: string): Promise<void> {
   }
 }
 
+async function cmdRemove(force: boolean): Promise<void> {
+  console.log('\n🗑️  移除 ApiPost MCP\n');
+
+  if (!force) {
+    const ok = await confirmDanger(
+      '? 将移除所有编辑器配置、全局配置（含 Token）并卸载全局 npm 包，确认? (y/N) ',
+    );
+    if (!ok) {
+      closeReadline();
+      console.log('已取消');
+      return;
+    }
+  }
+  closeReadline();
+
+  // 1. 移除各编辑器配置（保留编辑器配置文件中的其他 mcpServers）
+  for (const editor of EDITORS) {
+    try {
+      if (await removeEditorConfig(editor)) {
+        console.log(`✅ 已从 ${editor.name} 移除 (${editor.configPath})`);
+      }
+    } catch (err) {
+      console.error(`❌ 移除 ${editor.name} 配置失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // 2. 移除全局配置（含 Token）
+  try {
+    if (await removeGlobalConfig()) {
+      console.log(`✅ 已删除全局配置 (${getConfigPath()})`);
+    } else {
+      console.log(`⏭️ 未找到全局配置 (${getConfigPath()})`);
+    }
+  } catch (err) {
+    console.error(`❌ 删除全局配置失败: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // 3. 卸载全局 npm 包（最后执行，此时所需模块均已加载到内存）
+  console.log('\n📦 卸载全局 npm 包 apipost-mcp-cli ...');
+  try {
+    const { execSync } = await import('node:child_process');
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const globalRoot = execSync(`${npmCmd} root -g`, { encoding: 'utf-8' }).trim();
+    if (!existsSync(join(globalRoot, 'apipost-mcp-cli'))) {
+      console.log('⏭️ 未检测到全局安装，跳过卸载');
+      return;
+    }
+    execSync(`${npmCmd} uninstall -g apipost-mcp-cli`, { stdio: 'inherit' });
+    console.log('✅ 已卸载全局 npm 包');
+  } catch {
+    console.error('❌ 卸载失败，请手动执行: npm uninstall -g apipost-mcp-cli');
+  }
+}
+
 async function cmdStart(): Promise<void> {
   const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
   const { validateEnv } = await import('./config/index.js');
@@ -167,6 +224,9 @@ async function main(): Promise<void> {
     await cmdSetupEditor(editorName);
   } else if (command === 'start') {
     await cmdStart();
+  } else if (command === 'remove') {
+    const force = process.argv.includes('--force') || process.argv.includes('-f');
+    await cmdRemove(force);
   } else {
     console.error(`❌ 未知命令: ${command}`);
     printHelp();
