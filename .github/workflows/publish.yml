@@ -1,33 +1,30 @@
-name: Publish Package to npm
-# 触发条件：推送 v* 标签时自动发布，例如 git tag v1.0.0 && git push origin v1.0.0
+name: Publish
+
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
-# ⚠️ OIDC 可信发布必须要有这两行权限！缺一不可
 permissions:
-  id-token: write
-  contents: read
+  contents: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: https://registry.npmjs.org
+          cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm install
 
-      - name: Build package (如果你的包需要编译，保留；不需要就删掉这一步)
-        run: npm run build
+      - run: npm run build
 
-      - name: Publish to npm
-        run: npm publish --access public --provenance
+      - run: npm test
+
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
