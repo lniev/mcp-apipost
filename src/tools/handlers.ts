@@ -32,6 +32,7 @@ import {
 } from "../schema/index.js";
 import type {
   ApiField,
+  ApiListItem,
   AuthConfig,
 } from "../types/index.js";
 import {
@@ -518,6 +519,106 @@ export const handleList: ToolHandler = async (args) => {
       output += `     🔗 URL: ${item.url}\n`;
     }
     output += "\n";
+  });
+
+  return { content: [{ type: "text", text: output }] };
+};
+
+// ============ apipost_list_all ============
+interface AllSpaceItem {
+  teamName: string;
+  teamId: string;
+  projectName: string;
+  projectId: string;
+  item: ApiListItem;
+}
+
+export const handleListAll: ToolHandler = async (args) => {
+  const includeFolders = (args.include_folders as boolean) ?? false;
+  const showDescription = (args.show_description as boolean) ?? true;
+  const limit = Math.min((args.limit as number) || 1000, 10000);
+  const page = Math.max((args.page as number) || 1, 1);
+
+  const teams = await getTeamList();
+
+  let totalProjects = 0;
+  const errors: string[] = [];
+  const allItems: AllSpaceItem[] = [];
+
+  for (const team of teams) {
+    let projects: { project_id: string; name: string }[];
+    try {
+      projects = await getProjectList(team.team_id);
+    } catch (error) {
+      errors.push(`团队「${team.name}」获取项目列表失败: ${error instanceof Error ? error.message : String(error)}`);
+      continue;
+    }
+    totalProjects += projects.length;
+
+    for (const project of projects) {
+      let apis: ApiListItem[];
+      try {
+        const result = await getApiList(project.project_id);
+        apis = (result.list || []) as ApiListItem[];
+      } catch (error) {
+        errors.push(`项目「${project.name}」获取接口列表失败: ${error instanceof Error ? error.message : String(error)}`);
+        continue;
+      }
+
+      const items = includeFolders
+        ? apis
+        : apis.filter((item) => item.is_folder !== 1);
+      for (const item of items) {
+        allItems.push({
+          teamName: team.name,
+          teamId: team.team_id,
+          projectName: project.name,
+          projectId: project.project_id,
+          item
+        });
+      }
+    }
+  }
+
+  const totalApis = allItems.length;
+  const totalPages = Math.max(Math.ceil(totalApis / limit), 1);
+  const start = (page - 1) * limit;
+  const pageItems = allItems.slice(start, start + limit);
+
+  let output = `全部空间接口总览：${teams.length} 个团队 / ${totalProjects} 个项目 / ${totalApis} 个接口\n`;
+  output += `第 ${page}/${totalPages} 页（每页 ${limit} 条，本页 ${pageItems.length} 条，全局序号 ${totalApis === 0 ? 0 : start + 1}-${start + pageItems.length}）\n`;
+  if (page > totalPages) {
+    output += `页码超出范围，最大为第 ${totalPages} 页\n`;
+  }
+  if (page < totalPages) {
+    output += `还有更多接口，传 page: ${page + 1} 查看下一页\n`;
+  }
+  for (const err of errors) {
+    output += `错误: ${err}\n`;
+  }
+
+  let lastGroupKey = "";
+  pageItems.forEach((entry, index) => {
+    const groupKey = `${entry.teamId}/${entry.projectId}`;
+    if (groupKey !== lastGroupKey) {
+      lastGroupKey = groupKey;
+      output += `\n团队: ${entry.teamName} (${entry.teamId})\n`;
+      output += ` 项目: ${entry.projectName} (${entry.projectId})\n`;
+    }
+
+    const num = start + index + 1;
+    const { item } = entry;
+    if (item.is_folder === 1) {
+      output += `  ${num}. [目录] ${item.name}\n`;
+      output += `     ID: ${item.target_id}\n`;
+      return;
+    }
+    output += `  ${num}. [${item.method || "GET"}] ${item.name}\n`;
+    output += `     URL: ${item.url || "-"}\n`;
+    output += `     ID: ${item.target_id}\n`;
+    if (showDescription && item.description) {
+      output += `     描述: ${item.description}\n`;
+    }
   });
 
   return { content: [{ type: "text", text: output }] };
@@ -1132,6 +1233,7 @@ export const handlers: Record<string, ToolHandler> = {
   apipost_create_folder: handleCreateFolder,
   apipost_smart_create: handleSmartCreate,
   apipost_list: handleList,
+  apipost_list_all: handleListAll,
   apipost_update: handleUpdate,
   apipost_detail: handleDetail,
   apipost_delete: handleDelete,

@@ -310,6 +310,7 @@ apipost-mcp/
 | `apipost_create_folder` | 创建目录 | `name`, `parent_id` |
 | `apipost_smart_create` | 创建接口 | `method`, `url`, `name` |
 | `apipost_list` | 强化列表搜索 | `search`, `parent_id`, `target_type`, `show_structure`, `recursive`, `group_by_folder` |
+| `apipost_list_all` | 全局接口盘点 | `include_folders`, `show_description`, `limit` |
 | `apipost_detail` | 查看详情 | `target_id` |
 | `apipost_update` | 修改接口 | `target_id`, 其他可选 |
 | `apipost_delete` | 删除接口 | `api_ids` |
@@ -364,6 +365,31 @@ apipost_workspace action: "switch" team_name: "团队名" project_name: "项目�
 | `group_by_folder` | boolean | 按目录分组显示，默认 false |
 | `limit` | number | 显示数量限制（默认 50，最大 200） |
 | `show_all` | boolean | 显示全部（忽略 limit 限制） |
+
+### apipost_list_all 参数说明
+
+**跨团队全局接口盘点工具**，遍历所有团队 → 所有项目 → 接口列表，按「团队 → 项目 → 接口」分组返回接口名称、方法、URL、描述等基本信息，适合全局梳理接口资产。接口按「团队 → 项目」顺序全局编号分页，单个团队/项目拉取失败不会中断整体遍历，会标记错误后继续。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `include_folders` | boolean | 是否包含目录，默认 false 仅列出接口 |
+| `show_description` | boolean | 是否显示接口描述，默认 true |
+| `limit` | number | 每页展示的接口数量，默认 1000，最大 10000 |
+| `page` | number | 页码，从 1 开始，默认 1。输出会提示下一页页码 |
+
+**输出示例：**
+```text
+全部空间接口总览：2 个团队 / 26 个项目 / 1318 个接口
+第 1/2 页（每页 1000 条，本页 1000 条，全局序号 1-1000）
+还有更多接口，传 page: 2 查看下一页
+
+团队: 数据组 (1b141aeba5d1f001)
+ 项目: 利润报表 (2e72bfb539322d)
+  1. [GET] 利润汇总查询
+     URL: /api/profit/summary
+     ID: 2e72cxxx
+     描述: 按维度汇总利润数据
+```
 
 ### apipost_smart_create 说明（字段列表驱动）
 

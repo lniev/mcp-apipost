@@ -149,6 +149,13 @@ export interface ListArgs {
     show_all?: boolean;
 }
 
+export interface ListAllArgs {
+    include_folders?: boolean;
+    show_description?: boolean;
+    limit?: number;
+    page?: number;
+}
+
 export interface UpdateArgs {
     target_id: string;
     name?: string;

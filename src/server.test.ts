@@ -56,6 +56,7 @@ const toolNames = [
   'apipost_create_folder',
   'apipost_smart_create',
   'apipost_list',
+  'apipost_list_all',
   'apipost_update',
   'apipost_detail',
   'apipost_delete',
@@ -129,6 +130,33 @@ describe('MCP 协议集成', () => {
     expect(textOf(result)).toContain('用户接口');
     expect(getProjectList).toHaveBeenCalledWith('t1');
     expect(getApiList).toHaveBeenCalledWith('p1');
+  });
+
+  it('apipost_list_all 跨团队聚合接口列表并分页', async () => {
+    vi.mocked(getTeamList).mockResolvedValue([
+      { team_id: 't1', name: 'Team1' },
+      { team_id: 't2', name: 'Team2' }
+    ]);
+    vi.mocked(getProjectList)
+      .mockResolvedValueOnce([{ project_id: 'p1', name: 'Proj1' }])
+      .mockResolvedValueOnce([{ project_id: 'p2', name: 'Proj2' }]);
+    vi.mocked(getApiList)
+      .mockResolvedValueOnce({
+        list: [{ target_id: 'a1', name: '用户接口', url: '/user', method: 'GET', is_folder: 0 }]
+      })
+      .mockResolvedValueOnce({ list: [] });
+
+    const result = await client.callTool({ name: 'apipost_list_all', arguments: {} });
+
+    expect(result.isError).toBeFalsy();
+    const text = textOf(result);
+    expect(text).toContain('2 个团队 / 2 个项目 / 1 个接口');
+    expect(text).toContain('第 1/1 页');
+    expect(text).toContain('[GET] 用户接口');
+    expect(getProjectList).toHaveBeenCalledWith('t1');
+    expect(getProjectList).toHaveBeenCalledWith('t2');
+    expect(getApiList).toHaveBeenCalledWith('p1');
+    expect(getApiList).toHaveBeenCalledWith('p2');
   });
 
   it('未知工具返回协议层错误', async () => {

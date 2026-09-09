@@ -35,7 +35,7 @@ apipost-mcp/
 │   ├── workspace/            # 工作空间状态管理（团队/项目初始化与切换）
 │   ├── api-client/           # Axios 封装，对接 ApiPost OpenAPI
 │   ├── tools/
-│   │   ├── definitions.ts    # 9 个 MCP 工具的 JSON Schema 定义
+│   │   ├── definitions.ts    # 10 个 MCP 工具的 JSON Schema 定义
 │   │   └── handlers.ts       # 各工具的业务逻辑实现
 │   ├── schema/               # Body 构建、响应标准化、Schema 扁平化、TS/JSDoc 生成
 │   ├── types/                # 全项目 TypeScript 类型定义
@@ -125,6 +125,7 @@ apipost-mcp/
 | `apipost_create_folder` | 创建 API 目录（当前官方未开放） | write |
 | `apipost_smart_create` | 字段列表驱动创建接口 | write |
 | `apipost_list` | 搜索/过滤/递归浏览接口列表 | read |
+| `apipost_list_all` | 跨团队遍历所有项目接口，按「团队→项目→接口」分组 | read |
 | `apipost_detail` | 查看接口完整详情 | read |
 | `apipost_update` | 增量修改接口 | write |
 | `apipost_delete` | 批量删除接口 | delete |

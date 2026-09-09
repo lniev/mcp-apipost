@@ -95,6 +95,19 @@ export const tools: Tool[] = [
         }
     },
     {
+        name: 'apipost_list_all',
+        description: '获取所有团队、所有项目下的接口数据，按「团队 → 项目 → 接口」分组展示接口名称、方法、URL、描述等基本信息，支持分页，适合全局盘点接口资产',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                include_folders: { type: 'boolean', description: '是否包含目录，默认false仅列出接口' },
+                show_description: { type: 'boolean', description: '是否显示接口描述，默认true' },
+                limit: { type: 'number', description: '每页展示的接口数量，默认1000，最大10000' },
+                page: { type: 'number', description: '页码，从1开始，默认1。接口按「团队→项目」顺序全局编号分页，输出会提示下一页页码' }
+            }
+        }
+    },
+    {
         name: 'apipost_update',
         description: '修改API接口文档。规则同创建：responses 只用 fields（必填），不要传 data；headers/query/body/cookies 统一用字段列表，嵌套用 .，数组用 []，example 填真实值；所有字段含父级必须写 desc，父级需显式声明。例如：{"key":"data","desc":"返回体","type":"object"},{"key":"data.user","desc":"用户","type":"object"},{"key":"data.user.id","desc":"用户ID","type":"integer","example":1}',
         inputSchema: {

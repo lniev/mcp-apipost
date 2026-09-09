@@ -40,6 +40,7 @@ import {
   handleDelete,
   handleDetail,
   handleList,
+  handleListAll,
   handleSchemaToTypes,
   handleSmartCreate,
   handleTestConnection,
@@ -208,6 +209,171 @@ describe('handleList', () => {
 
     expect(res.content[0].text).toContain('用户接口');
     expect(res.content[0].text).not.toContain('订单接口');
+  });
+});
+
+describe('handleListAll', () => {
+  it('按团队→项目→接口分组展示，默认排除目录', async () => {
+    vi.mocked(getTeamList).mockResolvedValue([{ team_id: 't1', name: 'Team1' }]);
+    vi.mocked(getProjectList).mockResolvedValue([{ project_id: 'p1', name: 'Proj1' }]);
+    vi.mocked(getApiList).mockResolvedValue({
+      list: [
+        { target_id: 'a1', name: '用户接口', url: '/user', method: 'GET', description: '查询用户', is_folder: 0 },
+        { target_id: 'f1', name: '子目录', is_folder: 1 }
+      ]
+    });
+
+    const res = await handleListAll({});
+
+    expect(getTeamList).toHaveBeenCalledTimes(1);
+    expect(getProjectList).toHaveBeenCalledWith('t1');
+    expect(getApiList).toHaveBeenCalledWith('p1');
+    const text = res.content[0].text;
+    expect(text).toContain('1 个团队 / 1 个项目 / 1 个接口');
+    expect(text).toContain('Team1');
+    expect(text).toContain('Proj1');
+    expect(text).toContain('[GET] 用户接口');
+    expect(text).toContain('/user');
+    expect(text).toContain('查询用户');
+    expect(text).not.toContain('子目录');
+  });
+
+  it('include_folders 为 true 时包含目录', async () => {
+    vi.mocked(getTeamList).mockResolvedValue([{ team_id: 't1', name: 'Team1' }]);
+    vi.mocked(getProjectList).mockResolvedValue([{ project_id: 'p1', name: 'Proj1' }]);
+    vi.mocked(getApiList).mockResolvedValue({
+      list: [{ target_id: 'f1', name: '子目录', is_folder: 1 }]
+    });
+
+    const res = await handleListAll({ include_folders: true });
+
+    expect(res.content[0].text).toContain('子目录');
+  });
+
+  it('show_description 为 false 时不输出描述', async () => {
+    vi.mocked(getTeamList).mockResolvedValue([{ team_id: 't1', name: 'Team1' }]);
+    vi.mocked(getProjectList).mockResolvedValue([{ project_id: 'p1', name: 'Proj1' }]);
+    vi.mocked(getApiList).mockResolvedValue({
+      list: [{ target_id: 'a1', name: '用户接口', url: '/user', method: 'GET', description: '查询用户', is_folder: 0 }]
+    });
+
+    const res = await handleListAll({ show_description: false });
+
+    expect(res.content[0].text).toContain('用户接口');
+    expect(res.content[0].text).not.toContain('查询用户');
+  });
+
+  it('单个项目获取失败时标记错误并继续其他项目', async () => {
+    vi.mocked(getTeamList).mockResolvedValue([{ team_id: 't1', name: 'Team1' }]);
+    vi.mocked(getProjectList).mockResolvedValue([
+      { project_id: 'p1', name: 'Proj1' },
+      { project_id: 'p2', name: 'Proj2' }
+    ]);
+    vi.mocked(getApiList)
+      .mockRejectedValueOnce(new Error('权限不足'))
+      .mockResolvedValueOnce({
+        list: [{ target_id: 'a2', name: '订单接口', url: '/order', method: 'POST', is_folder: 0 }]
+      });
+
+    const res = await handleListAll({});
+
+    expect(res.content[0].text).toContain('获取接口列表失败: 权限不足');
+    expect(res.content[0].text).toContain('订单接口');
+  });
+
+  it('单个团队获取项目失败时标记错误并继续其他团队', async () => {
+    vi.mocked(getTeamList).mockResolvedValue([
+      { team_id: 't1', name: 'Team1' },
+      { team_id: 't2', name: 'Team2' }
+    ]);
+    vi.mocked(getProjectList)
+      .mockRejectedValueOnce(new Error('网络错误'))
+      .mockResolvedValueOnce([{ project_id: 'p2', name: 'Proj2' }]);
+    vi.mocked(getApiList).mockResolvedValue({
+      list: [{ target_id: 'a2', name: '订单接口', url: '/order', method: 'POST', is_folder: 0 }]
+    });
+
+    const res = await handleListAll({});
+
+    expect(res.content[0].text).toContain('获取项目列表失败: 网络错误');
+    expect(res.content[0].text).toContain('Team2');
+    expect(res.content[0].text).toContain('Proj2');
+    expect(res.content[0].text).toContain('订单接口');
+  });
+
+  it('分页：第一页截断并提示下一页页码', async () => {
+    vi.mocked(getTeamList).mockResolvedValue([{ team_id: 't1', name: 'Team1' }]);
+    vi.mocked(getProjectList).mockResolvedValue([{ project_id: 'p1', name: 'Proj1' }]);
+    vi.mocked(getApiList).mockResolvedValue({
+      list: Array.from({ length: 5 }, (_, i) => ({
+        target_id: `a${i}`, name: `接口${i}`, url: `/api/${i}`, method: 'GET', is_folder: 0
+      }))
+    });
+
+    const res = await handleListAll({ limit: 2 });
+
+    const text = res.content[0].text;
+    expect(text).toContain('5 个接口');
+    expect(text).toContain('第 1/3 页');
+    expect(text).toContain('全局序号 1-2');
+    expect(text).toContain('接口0');
+    expect(text).toContain('接口1');
+    expect(text).not.toContain('接口2');
+    expect(text).toContain('page: 2');
+  });
+
+  it('分页：第二页返回后续接口且序号连续', async () => {
+    vi.mocked(getTeamList).mockResolvedValue([{ team_id: 't1', name: 'Team1' }]);
+    vi.mocked(getProjectList).mockResolvedValue([{ project_id: 'p1', name: 'Proj1' }]);
+    vi.mocked(getApiList).mockResolvedValue({
+      list: Array.from({ length: 5 }, (_, i) => ({
+        target_id: `a${i}`, name: `接口${i}`, url: `/api/${i}`, method: 'GET', is_folder: 0
+      }))
+    });
+
+    const res = await handleListAll({ limit: 2, page: 2 });
+
+    const text = res.content[0].text;
+    expect(text).toContain('第 2/3 页');
+    expect(text).toContain('全局序号 3-4');
+    expect(text).toContain('3. [GET] 接口2');
+    expect(text).toContain('接口3');
+    expect(text).not.toContain('接口0]');
+    expect(text).toContain('page: 3');
+  });
+
+  it('分页：跨项目扁平编号，同项目只输出一次分组头', async () => {
+    vi.mocked(getTeamList).mockResolvedValue([{ team_id: 't1', name: 'Team1' }]);
+    vi.mocked(getProjectList).mockResolvedValue([
+      { project_id: 'p1', name: 'Proj1' },
+      { project_id: 'p2', name: 'Proj2' }
+    ]);
+    vi.mocked(getApiList)
+      .mockResolvedValueOnce({
+        list: [{ target_id: 'a1', name: '用户接口', url: '/user', method: 'GET', is_folder: 0 }]
+      })
+      .mockResolvedValueOnce({
+        list: [{ target_id: 'a2', name: '订单接口', url: '/order', method: 'POST', is_folder: 0 }]
+      });
+
+    const res = await handleListAll({});
+
+    const text = res.content[0].text;
+    expect(text).toContain('2 个项目 / 2 个接口');
+    expect(text.indexOf('用户接口')).toBeLessThan(text.indexOf('订单接口'));
+    expect(text.match(/^ 项目:/gm)).toHaveLength(2);
+  });
+
+  it('分页：页码超范围时给出提示', async () => {
+    vi.mocked(getTeamList).mockResolvedValue([{ team_id: 't1', name: 'Team1' }]);
+    vi.mocked(getProjectList).mockResolvedValue([{ project_id: 'p1', name: 'Proj1' }]);
+    vi.mocked(getApiList).mockResolvedValue({
+      list: [{ target_id: 'a1', name: '用户接口', url: '/user', method: 'GET', is_folder: 0 }]
+    });
+
+    const res = await handleListAll({ page: 99 });
+
+    expect(res.content[0].text).toContain('页码超出范围');
   });
 });
 
