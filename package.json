@@ -1,8 +1,14 @@
 {
-  "name": "apipost-mcp",
+  "name": "apipost-mcp-cli",
   "version": "1.5.0",
   "description": "ApiPost MCP - API文档管理工具，支持接口创建、修改、查看、类型生成和批量操作",
   "main": "dist/index.js",
+    "bin": {
+      "apipost-mcp": "dist/cli.js"
+    },
+    "files": [
+      "dist/"
+    ],
   "type": "module",
   "scripts": {
     "test": "vitest run",
@@ -19,7 +25,8 @@
     "setup:windsurf": "npm run gen:mcp-json && node scripts/setup-windsurf.mjs",
     "setup:trae": "npm run gen:mcp-json && node scripts/setup-trae.mjs",
     "setup:qoder": "npm run gen:mcp-json && node scripts/setup-qoder.mjs",
-        "setup:workbuddy": "npm run gen:mcp-json && node scripts/setup-workbuddy.mjs"
+        "setup:workbuddy": "npm run gen:mcp-json && node scripts/setup-workbuddy.mjs",
+        "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
@@ -30,6 +37,10 @@
     "type-generation",
     "claude-code"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lniev/mcp-apipost"
+  },
   "author": "lniev <LnievV@outlook.com> (https://github.com/lniev)",
   "license": "MIT",
   "pnpm": {

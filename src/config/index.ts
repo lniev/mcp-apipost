@@ -2,6 +2,11 @@
  * ApiPost MCP 配置模块
  */
 
+import { applyGlobalConfig, loadGlobalConfig } from '../setup/global-config.js';
+
+// 加载全局配置文件（~/.apipost-mcp/config.json），优先级低于系统环境变量
+applyGlobalConfig(await loadGlobalConfig());
+
 // ============ 环境变量配置 ============
 export const APIPOST_TOKEN = process.env.APIPOST_TOKEN || '';
 export const APIPOST_HOST = process.env.APIPOST_HOST || 'https://open.apipost.net';
