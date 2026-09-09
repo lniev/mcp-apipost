@@ -19,7 +19,7 @@
 **技术栈：**
 - **运行时：** Node.js >= 18.0.0
 - **语言：** TypeScript 5.9+ (ES2022 / ESNext Module)
-- **核心依赖：** `@modelcontextprotocol/sdk` ^1.30.0, `axios` ^1.6.0, `zod` ^3.22.0
+- **核心依赖：** `@modelcontextprotocol/sdk` ^1.30.0, `axios` ^1.6.0, `zod` ^4.5.4
 - **构建：** `tsc` 编译到 `dist/`，使用 `tsx` 进行开发调试
 
 ---

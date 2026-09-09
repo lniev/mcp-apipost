@@ -14,6 +14,8 @@
 ### ⬆️ 依赖升级
 
 - **`@modelcontextprotocol/sdk` 0.4.0 → 1.30.0**：`Server` 构造参数拆分为实现信息 + 选项两段（`capabilities` 移入第二个参数），适配 SDK 1.x breaking change
+- **`zod` 3.25.76 → 4.5.4**：仅作为 SDK 传递依赖使用（项目源码无直接 import），SDK 1.30.0 兼容范围 `^3.25 || ^4.0` 满足
+- **统一使用 pnpm 管理依赖**：移除 npm 生成的 `package-lock.json`，新增 `pnpm-workspace.yaml` 声明 esbuild 构建脚本白名单
 
 ## [1.4.0] - 2026-09-09
 
