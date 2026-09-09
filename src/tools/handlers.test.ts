@@ -124,6 +124,75 @@ describe('handleSmartCreate', () => {
     await expect(handleSmartCreate({ name: 'x', method: 'GET', url: '/x', body: 'not-json' }))
       .rejects.toThrow('参数解析失败');
   });
+
+  it('预校验发现错误时阻断保存，不调用 createApi', async () => {
+    await expect(handleSmartCreate({
+      name: '坏接口',
+      method: 'POST',
+      url: '/api/bad',
+      responses: JSON.stringify([{ name: '成功', status: 200, data: { code: 0 } }])
+    })).rejects.toThrow('预校验未通过');
+
+    expect(createApi).not.toHaveBeenCalled();
+  });
+
+  it('预校验错误信息包含全部问题清单', async () => {
+    await expect(handleSmartCreate({
+      name: '坏接口',
+      method: 'POST',
+      url: '/api/bad',
+      body: JSON.stringify([
+        { key: 'data', desc: '返回体', type: 'object', example: '{"a":1}' },
+        { key: 'data.id', desc: 'ID', type: 'int', example: 1 }
+      ])
+    })).rejects.toThrow('字符串化的 JSON');
+
+    expect(createApi).not.toHaveBeenCalled();
+  });
+
+  it('validate_only 模式只返回报告不保存', async () => {
+    const res = await handleSmartCreate({
+      name: '好接口',
+      method: 'GET',
+      url: '/api/ok',
+      validate_only: true,
+      query: JSON.stringify([{ key: 'id', desc: 'ID', type: 'integer', example: 1 }])
+    });
+
+    expect(createApi).not.toHaveBeenCalled();
+    expect(res.content[0].text).toContain('预校验结果');
+    expect(res.content[0].text).toContain('预校验通过');
+    expect(res.isError).toBeFalsy();
+  });
+
+  it('validate_only 模式下有错误时返回报告且标记 isError', async () => {
+    const res = await handleSmartCreate({
+      name: '坏接口',
+      method: 'GET',
+      url: '/api/bad',
+      validate_only: true,
+      responses: JSON.stringify([{ name: '成功', status: 200, fields: [] }])
+    });
+
+    expect(createApi).not.toHaveBeenCalled();
+    expect(res.content[0].text).toContain('fields 必填且不能为空');
+    expect(res.isError).toBe(true);
+  });
+
+  it('skip_validation 跳过校验强制保存', async () => {
+    vi.mocked(createApi).mockResolvedValue({ target_id: 'api-forced' });
+
+    const res = await handleSmartCreate({
+      name: '强制保存',
+      method: 'POST',
+      url: '/api/force',
+      skip_validation: true,
+      responses: JSON.stringify([{ name: '成功', status: 200, data: { code: 0 }, fields: [{ key: 'code', desc: 'c', type: 'integer' }] }])
+    });
+
+    expect(createApi).toHaveBeenCalledTimes(1);
+    expect(res.content[0].text).toContain('API创建成功');
+  });
 });
 
 describe('handleList', () => {
@@ -167,6 +236,34 @@ describe('handleUpdate', () => {
     vi.mocked(getApiDetails).mockResolvedValue({ list: [] });
 
     await expect(handleUpdate({ target_id: 'missing' })).rejects.toThrow('未找到接口详情');
+  });
+
+  it('提供的字段校验不合格时阻断更新', async () => {
+    vi.mocked(getApiDetails).mockResolvedValue({
+      list: [{ target_id: 'a1', name: '旧名称', method: 'GET', url: '/old', request: {}, response: {} }]
+    });
+
+    await expect(handleUpdate({
+      target_id: 'a1',
+      responses: JSON.stringify([{ name: '成功', status: 200, data: { code: 0 } }])
+    })).rejects.toThrow('预校验未通过');
+
+    expect(updateApi).not.toHaveBeenCalled();
+  });
+
+  it('skip_validation 时跳过校验直接更新', async () => {
+    vi.mocked(getApiDetails).mockResolvedValue({
+      list: [{ target_id: 'a1', name: '旧名称', method: 'GET', url: '/old', request: {}, response: {} }]
+    });
+    vi.mocked(updateApi).mockResolvedValue({});
+
+    await handleUpdate({
+      target_id: 'a1',
+      skip_validation: true,
+      responses: JSON.stringify([{ name: '成功', status: 200, data: { code: 0 }, fields: [{ key: 'code', desc: '状态码', type: 'integer', example: 0 }] }])
+    });
+
+    expect(updateApi).toHaveBeenCalledTimes(1);
   });
 });
 

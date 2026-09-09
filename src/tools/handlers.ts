@@ -35,7 +35,9 @@ import type {
   AuthConfig,
 } from "../types/index.js";
 import {
-  convertParams
+  convertParams,
+  formatValidationResult,
+  validateSmartCreatePayload
 } from "../utils/index.js";
 import {
   getCurrentWorkspace,
@@ -326,6 +328,47 @@ export const handleSmartCreate: ToolHandler = async (args) => {
     }
   }
 
+  // ============ 预校验：防止不合格数据保存后文档无法展示 ============
+  const validateOnly = args.validate_only === true;
+  const skipValidation = args.skip_validation === true;
+
+  if (!skipValidation) {
+    const validation = validateSmartCreatePayload({
+      name: args.name,
+      method: args.method,
+      url: args.url,
+      headers,
+      query,
+      body,
+      cookies,
+      responses,
+      auth
+    });
+
+    // 仅校验模式：直接返回报告，不保存
+    if (validateOnly) {
+      const report = validation.errors.length === 0 && validation.warnings.length === 0
+        ? '✅ 预校验通过，所有数据格式合格，可以安全保存。'
+        : formatValidationResult(validation);
+      return {
+        content: [{ type: 'text', text: `🔍 预校验结果（未执行保存）\n\n${report}` }],
+        isError: validation.errors.length > 0
+      };
+    }
+
+    // 有错误则阻断保存
+    if (validation.errors.length > 0) {
+      throw new Error(
+        `接口数据预校验未通过，已阻断保存（防止文档展示异常）。请修复以下问题后重试：\n\n${formatValidationResult(validation)}\n\n💡 提示：可传 skip_validation: true 跳过校验强制保存，或传 validate_only: true 仅查看校验报告。`
+      );
+    }
+
+    // 警告不阻断，但输出日志提示
+    if (validation.warnings.length > 0) {
+      logWithTime(`⚠️ 接口数据预校验警告:\n${formatValidationResult(validation)}`);
+    }
+  }
+
   // 构建 API 模板（匹配历史实现）
   const template = {
     project_id: workspace.projectId,
@@ -545,6 +588,18 @@ export const handleUpdate: ToolHandler = async (args) => {
   const cookies = parseParams(args.cookies as string | undefined);
   const responses = parseParams(args.responses as string | undefined);
 
+  // 提前解析 auth，供校验与合并共用
+  let parsedAuth: AuthConfig | undefined;
+  if (args.auth !== undefined) {
+    try {
+      parsedAuth = args.auth
+        ? (typeof args.auth === 'object' ? args.auth as AuthConfig : JSON.parse(args.auth as string) as AuthConfig)
+        : { type: 'inherit' };
+    } catch {
+      throw new Error('认证配置解析失败');
+    }
+  }
+
   // 构建增量更新配置对象
   const providedFields = new Set<string>();
   if (args.description !== undefined) providedFields.add('description');
@@ -555,6 +610,31 @@ export const handleUpdate: ToolHandler = async (args) => {
   if (args.auth !== undefined) providedFields.add('auth');
   if (args.responses !== undefined) providedFields.add('responses');
 
+  // ============ 预校验：仅校验本次提供的字段，防止不合格数据覆盖原有文档 ============
+  if (args.skip_validation !== true) {
+    const validation = validateSmartCreatePayload({
+      name: newName ?? originalApi.name,
+      method: newMethod ?? originalApi.method,
+      url: args.url ? (args.url as string) : originalApi.url,
+      headers: providedFields.has('headers') ? headers : undefined,
+      query: providedFields.has('query') ? query : undefined,
+      body: providedFields.has('body') ? body : undefined,
+      cookies: providedFields.has('cookies') ? cookies : undefined,
+      responses: providedFields.has('responses') ? responses : undefined,
+      auth: parsedAuth
+    });
+
+    if (validation.errors.length > 0) {
+      throw new Error(
+        `接口数据预校验未通过，已阻断更新（防止破坏现有文档）。请修复以下问题后重试：\n\n${formatValidationResult(validation)}\n\n💡 提示：可传 skip_validation: true 跳过校验强制更新。`
+      );
+    }
+
+    if (validation.warnings.length > 0) {
+      logWithTime(`⚠️ 接口数据预校验警告:\n${formatValidationResult(validation)}`);
+    }
+  }
+
   const mergedDescription = providedFields.has('description')
     ? (args.description as string)
     : (originalApi.description || '');
@@ -562,7 +642,7 @@ export const handleUpdate: ToolHandler = async (args) => {
   const existingRequest = originalApi.request || {};
   const mergedRequest = {
     auth: providedFields.has('auth')
-      ? (args.auth ? (typeof args.auth === 'object' ? args.auth : JSON.parse(args.auth as string)) : { type: 'inherit' })
+      ? (parsedAuth || { type: 'inherit' })
       : (existingRequest.auth || { type: 'inherit' }),
     pre_tasks: existingRequest.pre_tasks || [],
     post_tasks: existingRequest.post_tasks || [],

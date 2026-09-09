@@ -53,7 +53,7 @@ export const tools: Tool[] = [
     },
     {
         name: 'apipost_smart_create',
-        description: 'API接口文档生成器（字段列表驱动）。规则：responses 只传 fields，不传 data；headers/query/body/cookies 统一用字段列表，嵌套用 .，数组用 []；example 填真实值（不要 JSON 字符串）；所有字段含父级都必须写 desc，父级需显式声明。例如：{"key":"data","desc":"返回体","type":"object"},{"key":"data.user","desc":"用户","type":"object"},{"key":"data.user.id","desc":"用户ID","type":"integer","example":1}',
+        description: 'API接口文档生成器（字段列表驱动）。内置预校验：保存前自动检查字段格式（key/type/example/desc/父级声明），错误会阻断保存并返回修复清单。规则：responses 只传 fields，不传 data；headers/query/body/cookies 统一用字段列表，嵌套用 .，数组用 []；example 填真实值（不要 JSON 字符串）；所有字段含父级都必须写 desc，父级需显式声明。例如：{"key":"data","desc":"返回体","type":"object"},{"key":"data.user","desc":"用户","type":"object"},{"key":"data.user.id","desc":"用户ID","type":"integer","example":1}',
         inputSchema: {
             type: 'object',
             properties: {
@@ -67,7 +67,9 @@ export const tools: Tool[] = [
                 body: { type: 'string', description: 'Body字段列表字符串，仅用字段列表生成 raw/参数描述，example 用真实值，不要放 JSON 字符串。' },
                 cookies: { type: 'string', description: 'Cookies字段列表字符串，格式同上。' },
                 auth: { type: 'string', description: '认证配置JSON字符串（可选）。格式：{"type":"bearer","bearer":{"key":"your_token"}}' },
-                responses: { type: 'string', description: '响应字段列表字符串（必填 fields），格式：[{"name":"成功","status":200,"fields":[{"key":"code","type":"integer","example":0,"desc":"状态码"},{"key":"data.items[].id","type":"string","example":"1"}]}]' }
+                responses: { type: 'string', description: '响应字段列表字符串（必填 fields），格式：[{"name":"成功","status":200,"fields":[{"key":"code","type":"integer","example":0,"desc":"状态码"},{"key":"data.items[].id","type":"string","example":"1"}]}]' },
+                validate_only: { type: 'boolean', description: '仅执行预校验不保存，返回校验报告（可选，默认false）。建议先用此模式检查数据格式' },
+                skip_validation: { type: 'boolean', description: '跳过预校验强制保存（可选，默认false）。数据有错误时默认会阻断保存' }
             },
             required: ['method', 'url', 'name'],
             additionalProperties: false
@@ -108,7 +110,8 @@ export const tools: Tool[] = [
                 body: { type: 'string', description: 'Body参数JSON数组字符串（可选）。提供"[]"可删除所有body参数。格式：[{"key":"name","desc":"用户名","type":"string","required":true,"example":"张三"}]' },
                 cookies: { type: 'string', description: 'Cookies参数JSON数组字符串（可选）。提供"[]"可删除所有cookies。格式：[{"key":"session_id","desc":"会话ID","type":"string","required":false,"example":"abc123"}]' },
                 auth: { type: 'string', description: '认证配置JSON字符串（可选）。提供"{}"可删除认证配置。格式：{"type":"bearer","bearer":{"key":"your_token"}}' },
-                responses: { type: 'string', description: '响应示例JSON数组字符串（可选）。提供"[]"可删除所有响应示例。格式：[{"name":"成功响应","status":200,"data":{"code":0},"fields":[{"key":"code","desc":"状态码","type":"integer","example":"0"}]}]' }
+                responses: { type: 'string', description: '响应示例JSON数组字符串（可选）。提供"[]"可删除所有响应示例。格式：[{"name":"成功响应","status":200,"fields":[{"key":"code","desc":"状态码","type":"integer","example":"0"}]}]' },
+                skip_validation: { type: 'boolean', description: '跳过预校验强制更新（可选，默认false）。本次提供的字段有错误时默认会阻断更新' }
             },
             required: ['target_id'],
             additionalProperties: false

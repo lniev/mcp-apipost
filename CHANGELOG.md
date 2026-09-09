@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.4.0] - 2026-09-09
+
+### ✨ 新增功能
+
+- **接口数据预校验**：`apipost_smart_create` / `apipost_update` 保存前自动校验字段格式，不合格数据阻断保存并返回完整问题清单，防止「保存成功但文档什么也没展示」
+  - 新增纯函数 `validateApiFields()`：通用字段列表校验（headers/query/body/cookies/responses.fields 复用）
+  - 新增纯函数 `validateSmartCreatePayload()`：整体入参校验（name/method/url/auth/responses 结构）
+  - 新增纯函数 `formatValidationResult()`：格式化校验报告
+- **新增参数 `validate_only`**（仅 `apipost_smart_create`）：为 `true` 时只执行预校验并返回报告，不实际保存
+- **新增参数 `skip_validation`**（`apipost_smart_create` / `apipost_update`）：为 `true` 时跳过预校验强制保存（逃生门）
+
+### 🛡️ 校验规则
+
+**错误（阻断保存）：**
+- name/method/url 缺失或 method 非法
+- 字段缺 `key`、key 格式非法（空段 `a..b`、`a[]b` 等）、key 重复
+- `type` 非法值（仅允许 string/integer/number/boolean/object/array/null）
+- `example` 为字符串化的 JSON（违反「example 填真实值」约定）
+- `example` 类型与声明 `type` 不匹配（如 integer 配 `"abc"`）
+- 路径类型冲突（同一前缀既作基本类型又有子字段）
+- responses 传了 `data` 或 `fields` 为空（文档无响应展示的直接原因）
+
+**警告（不阻断，日志提示）：**
+- 字段缺 `desc`、父级未显式声明、object/array 无子字段、method 小写、url 格式可疑
+
+### ♻️ 其他调整
+
+- `apipost_update` 提前解析 `auth`（复用校验与合并逻辑），解析失败时给出明确错误
+- 修正 `apipost_update` 工具描述中 responses 示例误含 `data` 字段的问题
+- 新增 30 个测试用例（22 个校验器纯函数用例 + 8 个 handler 分支用例）
+
 ## [1.3.0] - 2026-05-20
 
 ### ✨ 新增与改进

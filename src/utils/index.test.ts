@@ -7,8 +7,11 @@ import {
   expandFieldListWithParents,
   fixIllegalTypeNames,
   formatError,
+  formatValidationResult,
   stringifyWithComments,
-  toValidIdentifier
+  toValidIdentifier,
+  validateApiFields,
+  validateSmartCreatePayload
 } from './index.js';
 import type { ApiField } from '../types/index.js';
 
@@ -169,5 +172,196 @@ describe('formatError', () => {
   it('包装非 Error 值', () => {
     const output = formatError('原始错误', 'myTool');
     expect(output).toContain('原始错误');
+  });
+});
+
+describe('validateApiFields', () => {
+  it('合格字段列表通过校验', () => {
+    const r = validateApiFields([
+      { key: 'data', desc: '返回体', type: 'object' },
+      { key: 'data.id', desc: 'ID', type: 'integer', example: 1 }
+    ], 'body');
+
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('非数组输入报错', () => {
+    const r = validateApiFields({ key: 'a' }, 'body');
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0].message).toContain('必须是数组');
+  });
+
+  it('缺少 key 或 key 为空报错', () => {
+    const r = validateApiFields([{ desc: 'x' }, { key: '' }], 'query');
+    expect(r.errors).toHaveLength(2);
+    expect(r.errors[0].message).toContain('缺少 key');
+  });
+
+  it('key 格式非法报错（空段 / [] 不在段尾）', () => {
+    const r = validateApiFields([
+      { key: 'a..b', desc: '空段' },
+      { key: 'a[]b.c', desc: '中括号位置错误' },
+      { key: '.a', desc: '点开头' }
+    ], 'body');
+    expect(r.errors).toHaveLength(3);
+    expect(r.errors.every(e => e.message.includes('key 格式非法'))).toBe(true);
+  });
+
+  it('重复 key 报错', () => {
+    const r = validateApiFields([
+      { key: 'id', desc: 'a', type: 'string' },
+      { key: 'id', desc: 'b', type: 'string' }
+    ], 'body');
+    expect(r.errors.some(e => e.message.includes('重复'))).toBe(true);
+  });
+
+  it('非法 type 报错', () => {
+    const r = validateApiFields([{ key: 'id', desc: 'x', type: 'str' }], 'body');
+    expect(r.errors[0].message).toContain('type "str" 非法');
+  });
+
+  it('缺少 desc 产生警告', () => {
+    const r = validateApiFields([{ key: 'id', type: 'integer', example: 1 }], 'body');
+    expect(r.errors).toEqual([]);
+    expect(r.warnings.some(w => w.message.includes('缺少 desc'))).toBe(true);
+  });
+
+  it('example 为字符串化 JSON 报错', () => {
+    const r = validateApiFields([
+      { key: 'data', desc: 'x', type: 'object', example: '{"a":1}' },
+      { key: 'tags', desc: 'y', type: 'array', example: '["a","b"]' }
+    ], 'body');
+    expect(r.errors).toHaveLength(2);
+    expect(r.errors.every(e => e.message.includes('字符串化的 JSON'))).toBe(true);
+  });
+
+  it('example 类型与声明 type 不匹配报错', () => {
+    const r = validateApiFields([
+      { key: 'count', desc: '数量', type: 'integer', example: 'abc' },
+      { key: 'rate', desc: '评分', type: 'number', example: 4.5 },
+      { key: 'flag', desc: '标志', type: 'boolean', example: true }
+    ], 'body');
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0].key).toBe('count');
+    expect(r.errors[0].message).toContain('不匹配');
+  });
+
+  it('example 为对象/数组真实值时通过', () => {
+    const r = validateApiFields([
+      { key: 'data', desc: '对象', type: 'object', example: { a: 1 } },
+      { key: 'tags', desc: '数组', type: 'array', example: ['a'] }
+    ], 'body');
+    expect(r.errors).toEqual([]);
+  });
+
+  it('路径类型冲突报错（父级被声明为基本类型）', () => {
+    const r = validateApiFields([
+      { key: 'data.user', desc: '用户', type: 'string' },
+      { key: 'data.user.id', desc: 'ID', type: 'integer', example: 1 }
+    ], 'body');
+    expect(r.errors.some(e => e.message.includes('路径类型冲突'))).toBe(true);
+  });
+
+  it('父级未显式声明产生警告', () => {
+    const r = validateApiFields([
+      { key: 'data.user.id', desc: 'ID', type: 'integer', example: 1 }
+    ], 'body');
+    expect(r.errors).toEqual([]);
+    const parentWarnings = r.warnings.filter(w => w.message.includes('父级节点未显式声明'));
+    expect(parentWarnings.map(w => w.key).sort()).toEqual(['data', 'data.user']);
+  });
+
+  it('object/array 叶子无子字段产生警告', () => {
+    const r = validateApiFields([
+      { key: 'meta', desc: '空对象', type: 'object' }
+    ], 'body');
+    expect(r.warnings.some(w => w.key === 'meta' && w.message.includes('没有任何子字段'))).toBe(true);
+  });
+});
+
+describe('validateSmartCreatePayload', () => {
+  it('合格完整入参通过校验', () => {
+    const r = validateSmartCreatePayload({
+      name: '获取用户',
+      method: 'GET',
+      url: '/api/user',
+      query: [{ key: 'id', desc: '用户ID', type: 'integer', example: 1 }],
+      responses: [{ name: '成功', status: 200, fields: [{ key: 'code', desc: '状态码', type: 'integer', example: 0 }] }]
+    });
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('缺少必填参数报错', () => {
+    const r = validateSmartCreatePayload({});
+    expect(r.errors.some(e => e.message.includes('name 必填'))).toBe(true);
+    expect(r.errors.some(e => e.message.includes('method 必填'))).toBe(true);
+    expect(r.errors.some(e => e.message.includes('url 必填'))).toBe(true);
+  });
+
+  it('method 非法报错，小写产生警告', () => {
+    const bad = validateSmartCreatePayload({ name: 'x', method: 'PATCH', url: '/x' });
+    expect(bad.errors.some(e => e.message.includes('method 必填'))).toBe(true);
+
+    const lower = validateSmartCreatePayload({ name: 'x', method: 'get', url: '/x' });
+    expect(lower.errors).toEqual([]);
+    expect(lower.warnings.some(w => w.message.includes('建议大写'))).toBe(true);
+  });
+
+  it('responses 传 data 报错', () => {
+    const r = validateSmartCreatePayload({
+      name: 'x', method: 'GET', url: '/x',
+      responses: [{ name: '成功', status: 200, data: { code: 0 }, fields: [{ key: 'code', desc: 'c', type: 'integer' }] }]
+    });
+    expect(r.errors.some(e => e.message.includes('禁止传 data'))).toBe(true);
+  });
+
+  it('responses.fields 为空报错（防止文档无展示）', () => {
+    const r = validateSmartCreatePayload({
+      name: 'x', method: 'GET', url: '/x',
+      responses: [{ name: '成功', status: 200, fields: [] }]
+    });
+    expect(r.errors.some(e => e.message.includes('fields 必填且不能为空'))).toBe(true);
+  });
+
+  it('responses 为 ApiPost 原生结构时跳过 fields 检查', () => {
+    const r = validateSmartCreatePayload({
+      name: 'x', method: 'GET', url: '/x',
+      responses: [{ example_id: '1', raw: '{}', expect: { code: '200' } }]
+    });
+    expect(r.errors).toEqual([]);
+  });
+
+  it('responses 内部字段会递归校验', () => {
+    const r = validateSmartCreatePayload({
+      name: 'x', method: 'GET', url: '/x',
+      responses: [{ name: '成功', status: 200, fields: [{ key: 'code', type: 'int' }] }]
+    });
+    expect(r.errors.some(e => e.section === 'responses[0].fields' && e.message.includes('非法'))).toBe(true);
+  });
+
+  it('auth 结构非法报错', () => {
+    const r = validateSmartCreatePayload({ name: 'x', method: 'GET', url: '/x', auth: 'not-object' });
+    expect(r.errors.some(e => e.message.includes('auth 必须是对象'))).toBe(true);
+  });
+
+  it('url 非路径非完整 URL 产生警告', () => {
+    const r = validateSmartCreatePayload({ name: 'x', method: 'GET', url: 'api/user' });
+    expect(r.errors).toEqual([]);
+    expect(r.warnings.some(w => w.message.includes('url'))).toBe(true);
+  });
+});
+
+describe('formatValidationResult', () => {
+  it('格式化错误与警告', () => {
+    const output = formatValidationResult({
+      errors: [{ section: 'body', key: 'id', message: '出错了' }],
+      warnings: [{ section: 'query', message: '注意了' }]
+    });
+    expect(output).toContain('❌ 错误（1 项');
+    expect(output).toContain('[body → id] 出错了');
+    expect(output).toContain('⚠️ 警告（1 项');
+    expect(output).toContain('[query] 注意了');
   });
 });

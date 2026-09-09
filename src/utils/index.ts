@@ -375,6 +375,350 @@ export function fixIllegalTypeNames(tsCode: string): string {
     return result;
 }
 
+// ============ 字段列表预校验 ============
+
+const VALID_FIELD_TYPES = new Set(['string', 'integer', 'number', 'boolean', 'object', 'array', 'null']);
+
+export interface FieldValidationIssue {
+    section: string;
+    key?: string;
+    message: string;
+}
+
+export interface FieldValidationResult {
+    errors: FieldValidationIssue[];
+    warnings: FieldValidationIssue[];
+}
+
+function looksLikeStringifiedJson(value: string): boolean {
+    const trimmed = value.trim();
+    if (trimmed.length < 2) return false;
+    const isWrapped =
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'));
+    if (!isWrapped) return false;
+    try {
+        JSON.parse(trimmed);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function exampleMatchesType(example: unknown, type: string): boolean {
+    switch (type) {
+        case 'string': return typeof example === 'string';
+        case 'integer': return typeof example === 'number' && Number.isInteger(example);
+        case 'number': return typeof example === 'number';
+        case 'boolean': return typeof example === 'boolean';
+        case 'object': return example !== null && typeof example === 'object' && !Array.isArray(example);
+        case 'array': return Array.isArray(example);
+        case 'null': return example === null;
+        default: return true;
+    }
+}
+
+interface ParsedKeySegment {
+    raw: string;
+    name: string;
+    isArray: boolean;
+}
+
+function parseKeySegments(key: string): ParsedKeySegment[] | null {
+    const segments = key.split('.');
+    const result: ParsedKeySegment[] = [];
+    for (const seg of segments) {
+        if (seg.length === 0) return null;
+        if (seg.endsWith('[]')) {
+            const name = seg.slice(0, -2);
+            if (name.length === 0 || name.includes('[') || name.includes(']')) return null;
+            result.push({ raw: seg, name, isArray: true });
+        } else {
+            if (seg.includes('[') || seg.includes(']')) return null;
+            result.push({ raw: seg, name: seg, isArray: false });
+        }
+    }
+    return result;
+}
+
+/**
+ * 校验字段列表（headers/query/body/cookies/responses.fields 通用）
+ *
+ * error：保存后文档必然异常，必须阻断
+ * warning：不影响保存，但可能导致展示不完整
+ */
+export function validateApiFields(fields: unknown, section: string): FieldValidationResult {
+    const errors: FieldValidationIssue[] = [];
+    const warnings: FieldValidationIssue[] = [];
+
+    if (fields === undefined || fields === null) return { errors, warnings };
+
+    if (!Array.isArray(fields)) {
+        errors.push({ section, message: '字段列表必须是数组' });
+        return { errors, warnings };
+    }
+
+    const seenKeys = new Map<string, number>();
+    const keyInfo = new Map<string, { type?: string; hasChildren: boolean; userDefined: boolean }>();
+
+    fields.forEach((field, index) => {
+        const loc = `${section}[${index}]`;
+
+        if (!field || typeof field !== 'object' || Array.isArray(field)) {
+            errors.push({ section, key: loc, message: '字段必须是对象' });
+            return;
+        }
+
+        const f = field as Record<string, unknown>;
+
+        // key 必填且合法
+        if (typeof f.key !== 'string' || f.key.length === 0) {
+            errors.push({ section, key: loc, message: '缺少 key 或 key 为空' });
+            return;
+        }
+        const key = f.key;
+
+        const segments = parseKeySegments(key);
+        if (!segments) {
+            errors.push({
+                section,
+                key,
+                message: `key 格式非法：嵌套用 . 分隔，数组标记 [] 只能出现在段尾（如 items[].id），不允许空段或 a[]b 形式`
+            });
+            return;
+        }
+
+        if (key.trim() !== key || segments.some(s => s.name.trim() !== s.name)) {
+            warnings.push({ section, key, message: 'key 包含首尾空格，可能导致匹配异常' });
+        }
+
+        // 重复 key
+        if (seenKeys.has(key)) {
+            errors.push({ section, key, message: `key 重复（第 ${seenKeys.get(key)} 与 ${index} 项），后一个会覆盖前一个` });
+        } else {
+            seenKeys.set(key, index);
+        }
+
+        // type 合法性
+        const type = typeof f.type === 'string' && f.type.length > 0 ? f.type : undefined;
+        if (f.type !== undefined && (!type || !VALID_FIELD_TYPES.has(type))) {
+            errors.push({
+                section,
+                key,
+                message: `type "${String(f.type)}" 非法，允许值：${[...VALID_FIELD_TYPES].join(' / ')}`
+            });
+        }
+
+        // desc 检查
+        const desc = f.desc ?? f.description;
+        if (typeof desc !== 'string' || desc.length === 0) {
+            warnings.push({ section, key, message: '缺少 desc，文档中该字段描述将展示为空' });
+        }
+
+        // example 检查
+        if (f.example !== undefined) {
+            if (typeof f.example === 'string' && looksLikeStringifiedJson(f.example)) {
+                errors.push({
+                    section,
+                    key,
+                    message: 'example 是字符串化的 JSON，违反约定：example 必须填真实值（对象/数组直接写，不要 JSON.stringify）'
+                });
+            } else if (type && VALID_FIELD_TYPES.has(type) && !exampleMatchesType(f.example, type)) {
+                errors.push({
+                    section,
+                    key,
+                    message: `example 类型与声明的 type "${type}" 不匹配（实际为 ${Array.isArray(f.example) ? 'array' : typeof f.example}）`
+                });
+            }
+        }
+
+        // 记录路径信息用于父级/冲突检查
+        let prefix = '';
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            prefix = prefix ? `${prefix}.${seg.name}` : seg.name;
+            const isLast = i === segments.length - 1;
+            const existing = keyInfo.get(prefix);
+
+            if (isLast) {
+                if (existing?.hasChildren && type !== 'object' && type !== 'array') {
+                    errors.push({
+                        section,
+                        key,
+                        message: `路径类型冲突："${prefix}" 已作为父级节点使用，不能同时声明为基本类型 "${type ?? 'string'}"`
+                    });
+                }
+                keyInfo.set(prefix, {
+                    type: seg.isArray ? 'array' : type,
+                    hasChildren: existing?.hasChildren ?? false,
+                    userDefined: true
+                });
+            } else {
+                const expectedType = seg.isArray ? 'array' : 'object';
+                if (existing && existing.userDefined && existing.type && existing.type !== expectedType) {
+                    errors.push({
+                        section,
+                        key,
+                        message: `路径类型冲突："${prefix}" 被声明为 "${existing.type}"，但子字段要求它是 "${expectedType}"`
+                    });
+                }
+                keyInfo.set(prefix, {
+                    type: existing?.type ?? expectedType,
+                    hasChildren: true,
+                    userDefined: existing?.userDefined ?? false
+                });
+            }
+        }
+    });
+
+    // 父级显式声明 & 容器叶子检查
+    for (const [prefix, info] of keyInfo) {
+        if (info.hasChildren && !info.userDefined) {
+            warnings.push({
+                section,
+                key: prefix,
+                message: '父级节点未显式声明，将被自动补充为空 desc（按约定所有父级都应显式写出并填 desc）'
+            });
+        }
+        if (info.userDefined && !info.hasChildren && (info.type === 'object' || info.type === 'array')) {
+            warnings.push({
+                section,
+                key: prefix,
+                message: `声明为 "${info.type}" 但没有任何子字段，raw 中将展示为空的 ${info.type === 'object' ? '{}' : '[]'}`
+            });
+        }
+    }
+
+    return { errors, warnings };
+}
+
+// ============ smart_create 入参整体预校验 ============
+
+export interface SmartCreateValidationInput {
+    name?: unknown;
+    method?: unknown;
+    url?: unknown;
+    headers?: unknown[];
+    query?: unknown[];
+    body?: unknown[];
+    cookies?: unknown[];
+    responses?: unknown[];
+    auth?: unknown;
+}
+
+const VALID_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE']);
+
+export function validateSmartCreatePayload(input: SmartCreateValidationInput): FieldValidationResult {
+    const errors: FieldValidationIssue[] = [];
+    const warnings: FieldValidationIssue[] = [];
+    const section = 'api';
+
+    // 基础必填
+    if (typeof input.name !== 'string' || input.name.trim().length === 0) {
+        errors.push({ section, message: 'name 必填且不能为空' });
+    }
+    if (typeof input.method !== 'string' || !VALID_METHODS.has(input.method.toUpperCase())) {
+        errors.push({ section, message: `method 必填且必须是 ${[...VALID_METHODS].join(' / ')} 之一` });
+    } else if (input.method !== input.method.toUpperCase()) {
+        warnings.push({ section, message: `method "${input.method}" 建议大写（如 "${input.method.toUpperCase()}"）` });
+    }
+    if (typeof input.url !== 'string' || input.url.trim().length === 0) {
+        errors.push({ section, message: 'url 必填且不能为空' });
+    } else if (!input.url.startsWith('/') && !/^https?:\/\//i.test(input.url) && !input.url.startsWith('{{')) {
+        warnings.push({ section, message: `url "${input.url}" 既不是以 / 开头的路径，也不是完整 URL 或 {{变量}} 前缀` });
+    }
+
+    // auth 结构
+    if (input.auth !== undefined) {
+        const auth = input.auth as Record<string, unknown>;
+        if (!auth || typeof auth !== 'object' || Array.isArray(auth)) {
+            errors.push({ section: 'auth', message: 'auth 必须是对象，如 {"type":"bearer","bearer":{"key":"token"}}' });
+        } else if (auth.type !== undefined && typeof auth.type !== 'string') {
+            errors.push({ section: 'auth', message: 'auth.type 必须是字符串' });
+        }
+    }
+
+    // 各字段列表
+    const sections: Array<[string, unknown[] | undefined]> = [
+        ['headers', input.headers],
+        ['query', input.query],
+        ['body', input.body],
+        ['cookies', input.cookies]
+    ];
+    for (const [name, list] of sections) {
+        const r = validateApiFields(list, name);
+        errors.push(...r.errors);
+        warnings.push(...r.warnings);
+    }
+
+    // responses 结构 + 内部字段
+    if (input.responses !== undefined) {
+        if (!Array.isArray(input.responses)) {
+            errors.push({ section: 'responses', message: 'responses 必须是数组' });
+        } else {
+            input.responses.forEach((resp, index) => {
+                const loc = `responses[${index}]`;
+                if (!resp || typeof resp !== 'object' || Array.isArray(resp)) {
+                    errors.push({ section: 'responses', key: loc, message: '响应项必须是对象' });
+                    return;
+                }
+                const r = resp as Record<string, unknown>;
+
+                // 已是 ApiPost 原生结构的透传项，跳过 fields 检查
+                if (r.example_id !== undefined || r.expect !== undefined || r.raw !== undefined) {
+                    return;
+                }
+
+                if (r.data !== undefined) {
+                    errors.push({
+                        section: 'responses',
+                        key: loc,
+                        message: '禁止传 data，请改用 fields 字段列表（data 已禁用）'
+                    });
+                }
+                if (!Array.isArray(r.fields) || r.fields.length === 0) {
+                    errors.push({
+                        section: 'responses',
+                        key: loc,
+                        message: 'fields 必填且不能为空，否则保存后响应示例为空，文档无任何展示'
+                    });
+                } else {
+                    const r2 = validateApiFields(r.fields, `${loc}.fields`);
+                    errors.push(...r2.errors);
+                    warnings.push(...r2.warnings);
+                }
+                if (r.status !== undefined && (typeof r.status !== 'number' || r.status < 100 || r.status > 599)) {
+                    warnings.push({ section: 'responses', key: loc, message: `status "${String(r.status)}" 不是合法的 HTTP 状态码` });
+                }
+            });
+        }
+    }
+
+    return { errors, warnings };
+}
+
+/**
+ * 格式化校验结果为可读文本
+ */
+export function formatValidationResult(result: FieldValidationResult): string {
+    const lines: string[] = [];
+    if (result.errors.length > 0) {
+        lines.push(`❌ 错误（${result.errors.length} 项，阻断保存）:`);
+        result.errors.forEach((e, i) => {
+            const loc = e.key ? `${e.section} → ${e.key}` : e.section;
+            lines.push(`  ${i + 1}. [${loc}] ${e.message}`);
+        });
+    }
+    if (result.warnings.length > 0) {
+        lines.push(`⚠️ 警告（${result.warnings.length} 项，不阻断）:`);
+        result.warnings.forEach((w, i) => {
+            const loc = w.key ? `${w.section} → ${w.key}` : w.section;
+            lines.push(`  ${i + 1}. [${loc}] ${w.message}`);
+        });
+    }
+    return lines.join('\n');
+}
+
 // ============ 错误处理 ============
 export function formatError(error: unknown, toolName: string): string {
     let detailedError = '';
