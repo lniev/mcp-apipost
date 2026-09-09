@@ -11,6 +11,10 @@
   - 参数：`include_folders`（是否含目录，默认 false）、`show_description`（是否显示描述，默认 true）
 - 新增 10 个测试用例（9 个 handler 分支用例 + 1 个 MCP 协议集成用例）
 
+### ⬆️ 依赖升级
+
+- **`@modelcontextprotocol/sdk` 0.4.0 → 1.30.0**：`Server` 构造参数拆分为实现信息 + 选项两段（`capabilities` 移入第二个参数），适配 SDK 1.x breaking change
+
 ## [1.4.0] - 2026-09-09
 
 ### ✨ 新增功能

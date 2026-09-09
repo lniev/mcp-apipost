@@ -20,8 +20,7 @@ import { getApiList, getProjectList, getTeamList } from './api-client/index.js';
 import { createServer } from './server.js';
 
 // ============ 进程内内存 transport ============
-// SDK 0.4.0 无 InMemoryTransport，这里自实现一对互连的 transport，
-// 让 Client 与 Server 在同一进程内完成真实的 MCP 协议握手。
+// 自实现一对互连的 transport，让 Client 与 Server 在同一进程内完成真实的 MCP 协议握手。
 class InMemoryTransport implements Transport {
   private peer: InMemoryTransport | null = null;
   onclose?: () => void;

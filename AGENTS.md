@@ -19,7 +19,7 @@
 **技术栈：**
 - **运行时：** Node.js >= 18.0.0
 - **语言：** TypeScript 5.9+ (ES2022 / ESNext Module)
-- **核心依赖：** `@modelcontextprotocol/sdk` ^0.4.0, `axios` ^1.6.0, `zod` ^3.22.0
+- **核心依赖：** `@modelcontextprotocol/sdk` ^1.30.0, `axios` ^1.6.0, `zod` ^3.22.0
 - **构建：** `tsc` 编译到 `dist/`，使用 `tsx` 进行开发调试
 
 ---
@@ -194,7 +194,7 @@ npm run test:watch  # 监听模式
 | MCP 协议层 | `src/server.test.ts`，用自实现的 `InMemoryTransport` 让 `Client`/`Server` 进程内握手 |
 
 **MCP 集成测试要点：**
-- SDK 0.4.0 无内置内存 transport，`src/server.test.ts` 里自实现了 `InMemoryTransport`（约 20 行，实现 `Transport` 接口，两端互连）。
+- `src/server.test.ts` 里自实现了 `InMemoryTransport`（约 20 行，实现 `Transport` 接口，两端互连），供 Client/Server 进程内握手。
 - 集成测试 `vi.mock` 掉 `api-client` 但保留真实 `workspace`，验证「协议 → handler → workspace 初始化」三层链路，仅屏蔽纯网络 IO。
 - `validateEnv()` 的 `process.exit(1)` 副作用只留在 `index.ts`，测试通过 `createServer()` 拿到无副作用的 server 实例。
 

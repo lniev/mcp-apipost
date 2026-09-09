@@ -54,11 +54,10 @@ export async function handleCallTool(params: {
  * 创建 MCP Server 实例（不含副作用，可安全用于测试）
  */
 export function createServer(): Server {
-    const server = new Server({
-        name: 'apipost-mcp',
-        version: '1.0.0',
-        capabilities: { tools: {} }
-    });
+    const server = new Server(
+        { name: 'apipost-mcp', version: '1.0.0' },
+        { capabilities: { tools: {} } }
+    );
 
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools
