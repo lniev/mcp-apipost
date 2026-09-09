@@ -18,7 +18,8 @@
     "setup:cursor": "npm run gen:mcp-json && node scripts/setup-cursor.mjs",
     "setup:windsurf": "npm run gen:mcp-json && node scripts/setup-windsurf.mjs",
     "setup:trae": "npm run gen:mcp-json && node scripts/setup-trae.mjs",
-    "setup:qoder": "npm run gen:mcp-json && node scripts/setup-qoder.mjs"
+    "setup:qoder": "npm run gen:mcp-json && node scripts/setup-qoder.mjs",
+        "setup:workbuddy": "npm run gen:mcp-json && node scripts/setup-workbuddy.mjs"
   },
   "keywords": [
     "mcp",

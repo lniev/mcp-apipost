@@ -253,6 +253,14 @@ npm run setup:qoder
 
 将配置写入 `~/.qoder/mcp.json`（JSON 格式，全局生效）。
 
+#### WorkBuddy
+
+```bash
+npm run setup:workbuddy
+```
+
+将配置写入 `~/.workbuddy/mcp.json`（JSON 格式，全局生效）。
+
 **注意：** 运行前请确保 `mcp.json` 中的环境变量已填写真实值。
 
 ### 6. 其他Agent客户端手动配置 mcp.json
