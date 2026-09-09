@@ -31,10 +31,15 @@
   ],
   "author": "lniev <LnievV@outlook.com> (https://github.com/lniev)",
   "license": "MIT",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "axios": "^1.6.0",
-    "zod": "^3.22.0"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^20.19.21",
